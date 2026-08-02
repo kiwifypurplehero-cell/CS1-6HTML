@@ -164,10 +164,12 @@
             top: 25%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 48px;
+            font-size: clamp(25px, 5vw, 36px);
             font-weight: 900;
             color: #f39c12;
-            text-shadow: 0 0 10px rgba(0,0,0,0.9), 0 0 20px #e67e22;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.9), 0 0 8px rgba(230,126,34,.65);
+            padding: 6px 12px;
+            max-width: min(86vw, 520px);
             pointer-events: none;
             display: none;
             z-index: 15;
@@ -251,6 +253,8 @@
         .match-config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
         .match-config-grid label { font-size: 12px; color: #cbd5e1; display: flex; flex-direction: column; gap: 4px; }
         .match-config-grid select { background:#1f2937; color:white; border:1px solid #4b5563; border-radius:4px; padding:7px; font-weight:bold; }
+        #bomb-economy-section input { background:#1f2937; color:white; border:1px solid #4b5563; border-radius:4px; padding:7px; font-weight:bold; min-width:0; }
+        #economy-hud { display:none; background:rgba(0,0,0,.68); padding:7px 10px; border-radius:6px; color:#8ee6a8; font-size:12px; line-height:1.35; text-align:right; }
         #spectator-overlay { position:absolute; left:50%; bottom:96px; transform:translateX(-50%); z-index:12; display:none; text-align:center; color:white; background:rgba(0,0,0,0.62); border:1px solid rgba(255,255,255,0.28); border-radius:10px; padding:10px 16px; pointer-events:none; min-width:280px; }
         #spectator-name { color:#f1c40f; font-size:18px; font-weight:bold; margin-top:4px; }
         #round-info { background:rgba(0,0,0,0.6); padding:8px 12px; border-radius:6px; color:#2ecc71; font-weight:bold; }
@@ -594,6 +598,19 @@
                     </div>
                 </div>
 
+                <div class="menu-section" id="bomb-economy-section" style="display:none;">
+                    <h3>ECONOMIA DO MODO BOMB</h3>
+                    <div class="match-config-grid">
+                        <label>DINHEIRO INICIAL
+                            <select id="cfg-start-money" onchange="setStartMoney(this.value)"><option value="800" selected>$800</option><option value="1600">$1600</option><option value="3000">$3000</option><option value="5000">$5000</option><option value="custom">Personalizado</option></select>
+                        </label>
+                        <label>VALOR PERSONALIZADO<input id="cfg-custom-money" type="number" min="0" max="16000" step="100" value="800" disabled onchange="setCustomStartMoney(this.value)"></label>
+                        <label>RECOMPENSA POR VITÓRIA<input type="number" min="0" max="16000" step="50" value="3250" onchange="updateEconomySetting('winReward',this.value)"></label>
+                        <label>RECOMPENSA POR DERROTA<input type="number" min="0" max="16000" step="50" value="1400" onchange="updateEconomySetting('lossReward',this.value)"></label>
+                    </div>
+                    <small style="color:#9ca3af">Bônus de sequência: +$500 por derrota (máx. +$2000) • limite: $16000.</small>
+                </div>
+
                 <!-- DM Options -->
                 <div class="menu-section" id="dm-section" style="display:none;">
                     <h3>TEMPO DE PARTIDA</h3><select id="cfg-dm-time" onchange="updateMatchSetting('dmTime',this.value)" style="width:100%;padding:8px;background:#1f2937;color:white"><option value="180">3 min</option><option value="300" selected>5 min</option><option value="600">10 min</option></select>
@@ -708,6 +725,7 @@
                 </div>
                 <div style="display:flex; gap:10px; align-items:center;">
                     <div id="round-info">RODADA 1/5 • 02:00</div>
+                    <div id="economy-hud"></div>
                     <div style="background:rgba(0,0,0,0.6); padding:8px 12px; border-radius:6px; color:#f39c12; font-weight:bold;" id="mode-display">
                         MODO: TDM
                     </div>
@@ -795,9 +813,15 @@
         const matchSettings = { rounds: 5, roundTime: 120, dmTime: 300, killLimit: 10, botCount: 8 };
         const matchState = { currentRound: 1, roundStartedAt: 0, roundEndsAt: 0, inRound: false, ctWins: 0, tWins: 0 };
         const bombState = { planted: false, plantedAt: 0, carrier: null, site: null };
+        const economySettings = { startMoney: 800, winReward: 3250, lossReward: 1400, lossStep: 500, maxLossBonus: 2000, maxMoney: 16000 };
+        const economyState = { playerMoney: 800, playerLossStreak: 0, botAccounts: new Map(), pendingWinner: null };
+        const AI_STATES = Object.freeze({ IDLE:'IDLE', PATROL:'PATROL', SUSPICIOUS:'SUSPICIOUS', ALERT:'ALERT', INVESTIGATE:'INVESTIGATE', COMBAT:'COMBAT', SEARCH:'SEARCH', RECOVER_STUCK:'RECOVER_STUCK' });
+        const AI_PERCEPTION = Object.freeze({ fovRadians: THREE.MathUtils.degToRad(100), maxDistance: 52, immediateRadius: 5, memoryMs: 7000, searchMs: 5500, scanIntervalMs: 240 });
         const spectatorState = { active: false, targetIndex: 0 };
         const aiSoundEvents = [];
         const coverPoints = [];
+        let countdownInterval = null;
+        let countdownHideTimer = null;
 
 
         // Function to download the original HTML source file directly from the game menu
@@ -842,6 +866,46 @@
             updateRoundInfo();
         }
 
+        function clampMoney(value) { return THREE.MathUtils.clamp(Math.round(Number(value) || 0), 0, economySettings.maxMoney); }
+        function setStartMoney(value) {
+            const custom = value === 'custom';
+            document.getElementById('cfg-custom-money').disabled = !custom;
+            economySettings.startMoney = clampMoney(custom ? document.getElementById('cfg-custom-money').value : value);
+            updateEconomyHUD();
+        }
+        function setCustomStartMoney(value) { economySettings.startMoney = clampMoney(value); updateEconomyHUD(); }
+        function updateEconomySetting(key, value) { economySettings[key] = clampMoney(value); updateEconomyHUD(); }
+        function resetEconomy() {
+            economyState.playerMoney = economySettings.startMoney;
+            economyState.playerLossStreak = 0;
+            economyState.botAccounts.clear();
+            economyState.pendingWinner = null;
+            updateEconomyHUD();
+        }
+        function rewardAccount(current, won, streak) {
+            const reward = won ? economySettings.winReward : economySettings.lossReward + Math.min(streak * economySettings.lossStep, economySettings.maxLossBonus);
+            return clampMoney(current + reward);
+        }
+        function applyRoundEconomy(winner) {
+            if (selectedMode !== 'BOMB' || !winner) return;
+            const playerWon = player.team === winner;
+            economyState.playerLossStreak = playerWon ? 0 : economyState.playerLossStreak + 1;
+            economyState.playerMoney = rewardAccount(economyState.playerMoney, playerWon, economyState.playerLossStreak - (playerWon ? 0 : 1));
+            bots.forEach(bot => {
+                const account = economyState.botAccounts.get(bot.name) || { money:economySettings.startMoney, lossStreak:0 };
+                const won = bot.team === winner;
+                account.lossStreak = won ? 0 : account.lossStreak + 1;
+                account.money = rewardAccount(account.money, won, account.lossStreak - (won ? 0 : 1));
+                economyState.botAccounts.set(bot.name, account);
+            });
+            updateEconomyHUD();
+        }
+        function updateEconomyHUD() {
+            const hud = document.getElementById('economy-hud');
+            hud.style.display = selectedMode === 'BOMB' ? 'block' : 'none';
+            if (selectedMode === 'BOMB') hud.innerHTML = `<b>$${economyState.playerMoney}</b> • inicial $${economySettings.startMoney}<br>vitória +$${economySettings.winReward} • derrota +$${economySettings.lossReward} • sequência ${economyState.playerLossStreak}`;
+        }
+
         function showOptionsTab(tabName, button) {
             document.querySelectorAll('.option-tab-page').forEach(page => page.classList.toggle('active', page.dataset.optionPage === tabName));
             document.querySelectorAll('.options-tab').forEach(tab => tab.classList.toggle('active', tab === button));
@@ -873,6 +937,7 @@
 
         function pauseGameAndMenu() {
             gameFrozen = true;
+            cancelCountdown();
             document.getElementById('menu-overlay').style.display = 'flex';
             closeSubpanel();
             if (document.exitPointerLock) {
@@ -916,8 +981,10 @@
             document.getElementById('tdm-section').style.display = mode !== 'DM' ? 'block' : 'none';
             document.getElementById('tdm-config-section').style.display = mode !== 'DM' ? 'block' : 'none';
             document.getElementById('dm-section').style.display = mode === 'DM' ? 'block' : 'none';
+            document.getElementById('bomb-economy-section').style.display = mode === 'BOMB' ? 'block' : 'none';
             document.getElementById('scoreboard-box').style.display = mode !== 'DM' ? 'flex' : 'none';
             document.getElementById('mode-display').innerText = `MODO: ${mode}`;
+            updateEconomyHUD();
         }
 
         function setMap(map) {
@@ -1270,7 +1337,7 @@
             glockMagazineMesh = null;
             slideMesh = null;
             const viewProfiles = {
-                Glock:  { scale: 0.775, position: [0.22,-0.25,-0.58], rotation: [0.02,-0.05,0] },
+                Glock:  { scale: 0.2, position: [0.18,-0.32,-0.52], rotation: [0.02,-0.05,0] },
                 AK47:   { scale: 0.725, position: [0.25,-0.28,-0.66], rotation: [0.01,-0.04,0] },
                 AWP:    { scale: 0.625, position: [0.22,-0.27,-0.72], rotation: [0,-0.03,0] },
                 Shotgun:{ scale: 0.675, position: [0.24,-0.29,-0.68], rotation: [0,-0.04,0] }
@@ -1741,10 +1808,15 @@
             scoreCT = 0; scoreT = 0;
             matchState.currentRound = 1;
             matchState.ctWins = 0; matchState.tWins = 0;
+            resetEconomy();
             startRound(true);
         }
 
         function startRound(rebuildBots = false) {
+            if (economyState.pendingWinner) {
+                applyRoundEconomy(economyState.pendingWinner);
+                economyState.pendingWinner = null;
+            }
             bots.forEach(b => scene.remove(b.mesh));
             bots.length = 0;
             spectatorState.active = false;
@@ -1785,7 +1857,7 @@
                 matchState.inRound = true;
                 bombState.planted = false; bombState.plantedAt = 0; bombState.site = null;
                 bombState.carrier = player.team === 'T' ? player : bots.find(b => b.team === 'T');
-                start5sCountdown();
+                start10sCountdown();
             } else {
                 gameFrozen = false;
                 const rx = (Math.random() - 0.5) * (MAP_SIZE - 20);
@@ -1805,6 +1877,7 @@
             player.hp = 100;
             player.isAlive = true;
             updateHUD();
+            updateEconomyHUD();
             updateRoundInfo();
         }
 
@@ -1817,10 +1890,12 @@
                 targetPos: new THREE.Vector3(x, 0, z), waypoint: null, lastShoot: 0,
                 shootDelay: weapon.fireRate + 260 + Math.random() * 280, stuckTime: 0,
                 lastPos: new THREE.Vector3(x, 0, z), weapon, ammo: weapon.ammo, maxAmmo: weapon.ammo,
-                strafeDir: Math.random() < 0.5 ? 1 : -1, lastStrafeChange: 0, state: 'patrol',
-                lastKnownEnemyPos: null, heardPos: null, investigateUntil: 0, coverPos: null,
-                routeChangeAt: 0, navRoute: [], navGoal: null, recoveryAttempts: 0, avoidDir: new THREE.Vector3(), pathMemory: [], flankSide: Math.random() < 0.5 ? 1 : -1
+                strafeDir: Math.random() < 0.5 ? 1 : -1, lastStrafeChange: 0, state: AI_STATES.IDLE, stateSince: Date.now(),
+                lastKnownEnemyPos: null, lastSeenAt: 0, targetVisibleSince: 0, reactionMs: 200 + Math.random() * 300, heardPos: null, investigateUntil: 0, searchUntil: 0, coverPos: null,
+                routeChangeAt: 0, navRoute: [], navGoal: null, recoveryAttempts: 0, avoidDir: new THREE.Vector3(), pathMemory: [], blockedDirections: [], flankSide: Math.random() < 0.5 ? 1 : -1,
+                lastProgressAt: Date.now(), progressAnchor: new THREE.Vector3(x,0,z), scanAt: 0, scanIndex: Math.floor(Math.random()*5), localScan: { front:8, frontLeft:8, frontRight:8, left:8, right:8 }, idleUntil: Date.now() + 400 + Math.random()*900
             });
+            if (selectedMode === 'BOMB' && !economyState.botAccounts.has(name)) economyState.botAccounts.set(name, { money:economySettings.startMoney, lossStreak:0 });
         }
 
         function respawnBot(bot) {
@@ -1838,21 +1913,31 @@
             bot.lastPos.copy(bot.mesh.position);
         }
 
-        function start5sCountdown() {
+        function start10sCountdown() {
             const banner = document.getElementById('countdown-banner');
+            if (countdownInterval) clearInterval(countdownInterval);
+            if (countdownHideTimer) clearTimeout(countdownHideTimer);
             banner.style.display = 'block';
-            let timer = 5;
+            let timer = 10;
             banner.innerText = `PREPARE-SE: ${timer}`;
-            const interval = setInterval(() => {
+            countdownInterval = setInterval(() => {
                 timer--;
                 if (timer > 0) banner.innerText = `PREPARE-SE: ${timer}`;
                 else {
                     banner.innerText = "VALENDO!";
                     gameFrozen = false;
-                    setTimeout(() => { banner.style.display = 'none'; }, 1000);
-                    clearInterval(interval);
+                    matchState.roundStartedAt = Date.now();
+                    matchState.roundEndsAt = matchState.roundStartedAt + matchSettings.roundTime * 1000;
+                    countdownHideTimer = setTimeout(() => { banner.style.display = 'none'; countdownHideTimer = null; }, 1000);
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
                 }
             }, 1000);
+        }
+
+        function cancelCountdown() {
+            if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+            if (countdownHideTimer) { clearTimeout(countdownHideTimer); countdownHideTimer = null; }
         }
 
         function checkCollisions(x, z, radius) {
@@ -1878,27 +1963,72 @@
         }
 
         function isEnemy(bot, candidateTeam, isPlayer = false) {
-            if (selectedMode === 'DM') return !isPlayer || bot.team !== player.team;
+            if (selectedMode === 'DM') return true;
             return bot.team !== candidateTeam;
         }
 
-        function findEnemy(bot) {
-            let best = null, bestScore = Infinity;
-            if (player.isAlive && isEnemy(bot, player.team, true)) {
-                const d = bot.mesh.position.distanceTo(camera.position);
-                const visible = d < 55 && hasLineOfSight(bot.mesh.position.clone().add(new THREE.Vector3(0,1.3,0)), camera.position.clone());
-                const score = d - (visible ? 22 : 0) - (player.hp < 40 ? 7 : 0);
-                if (score < bestScore) { bestScore = score; best = { position: camera.position, isPlayer: true, team: player.team, distance: d, visible }; }
-            }
+        function getBotForward(bot) {
+            const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(bot.mesh.quaternion);
+            forward.y = 0;
+            return forward.lengthSq() ? forward.normalize() : new THREE.Vector3(1,0,0);
+        }
+
+        function canBotSee(bot, targetPos) {
+            const eye = bot.mesh.position.clone().add(new THREE.Vector3(0, 1.55, 0));
+            const toTarget = new THREE.Vector3().subVectors(targetPos, eye);
+            const distance = toTarget.length();
+            if (distance > AI_PERCEPTION.maxDistance || distance < 0.01) return false;
+            const horizontal = toTarget.clone().setY(0).normalize();
+            if (getBotForward(bot).dot(horizontal) < Math.cos(AI_PERCEPTION.fovRadians / 2)) return false;
+            return hasLineOfSight(eye, targetPos);
+        }
+
+        function findVisibleEnemy(bot) {
+            let best = null;
+            const consider = (position, data) => {
+                const target = position.clone().add(new THREE.Vector3(0, data.isPlayer ? 0 : 1.2, 0));
+                const distance = bot.mesh.position.distanceTo(position);
+                if (!canBotSee(bot, target)) return;
+                if (!best || distance < best.distance) best = { ...data, position:position.clone(), distance, visible:true };
+            };
+            if (player.isAlive && isEnemy(bot, player.team, true)) consider(camera.position, { isPlayer:true, team:player.team });
             bots.forEach(other => {
-                if (other !== bot && other.isAlive && isEnemy(bot, other.team)) {
-                    const d = bot.mesh.position.distanceTo(other.mesh.position);
-                    const visible = d < 55 && hasLineOfSight(bot.mesh.position.clone().add(new THREE.Vector3(0,1.3,0)), other.mesh.position.clone().add(new THREE.Vector3(0,1.1,0)));
-                    const score = d - (visible ? 22 : 0) - (other.hp < 40 ? 7 : 0) - (other.lastShoot && Date.now() - other.lastShoot < 1200 ? 4 : 0);
-                    if (score < bestScore) { bestScore = score; best = { position: other.mesh.position, bot: other, isPlayer: false, team: other.team, distance: d, visible }; }
-                }
+                if (other !== bot && other.isAlive && isEnemy(bot, other.team)) consider(other.mesh.position, { bot:other, isPlayer:false, team:other.team });
             });
             return best;
+        }
+
+        function setBotState(bot, state, now) {
+            if (bot.state !== state) { bot.state = state; bot.stateSince = now; }
+        }
+
+        function rememberVisibleEnemy(bot, enemy, now) {
+            bot.lastKnownEnemyPos = enemy.position.clone();
+            bot.lastSeenAt = now;
+            bot.searchUntil = now + AI_PERCEPTION.memoryMs + AI_PERCEPTION.searchMs;
+            if (!bot.targetVisibleSince) bot.targetVisibleSince = now;
+        }
+
+        function alertNearbyAllies(bot, now) {
+            bots.forEach(ally => {
+                if (ally === bot || !ally.isAlive || ally.team !== bot.team || ally.mesh.position.distanceTo(bot.mesh.position) > 22) return;
+                ally.heardPos = bot.lastKnownEnemyPos.clone();
+                ally.investigateUntil = now + 4200;
+                if (ally.state !== AI_STATES.COMBAT) setBotState(ally, AI_STATES.SUSPICIOUS, now);
+            });
+        }
+
+        function scanLocalEnvironment(bot, now) {
+            if (now < bot.scanAt) return;
+            bot.scanAt = now + AI_PERCEPTION.scanIntervalMs;
+            const labels = ['front','frontLeft','frontRight','left','right','ground'];
+            const angles = [0, Math.PI/4, -Math.PI/4, Math.PI/2, -Math.PI/2, 0];
+            const i = bot.scanIndex++ % labels.length;
+            const direction = labels[i] === 'ground' ? new THREE.Vector3(0,-1,0) : getBotForward(bot).applyAxisAngle(new THREE.Vector3(0,1,0), angles[i]);
+            const origin = bot.mesh.position.clone().add(new THREE.Vector3(0,1,0));
+            const ray = new THREE.Raycaster(origin, direction, 0, 9);
+            const hit = ray.intersectObjects(labels[i] === 'ground' ? [ground] : wallObjects, false)[0];
+            bot.localScan[labels[i]] = hit ? hit.distance : 9;
         }
 
         function chooseCover(bot, threatPos) {
@@ -1906,9 +2036,9 @@
             coverPoints.forEach(point => {
                 if (checkCollisions(point.x, point.z, bot.radius)) return;
                 const dist = bot.mesh.position.distanceTo(point);
-                const threatDist = threatPos ? point.distanceTo(threatPos) : 0;
+                if (dist > 24) return;
                 const hidden = threatPos && !hasLineOfSight(point.clone().add(new THREE.Vector3(0,1.2,0)), threatPos.clone().add(new THREE.Vector3(0,1,0)));
-                const score = (hidden ? 55 : 0) + Math.min(threatDist, 28) - dist * 0.55;
+                const score = (hidden ? 45 : 0) - dist + Math.random() * 4;
                 if (score > bestScore) { bestScore = score; best = point; }
             });
             return best ? best.clone() : null;
@@ -1916,146 +2046,115 @@
 
         function getPatrolPoint(bot) {
             const limit = MAP_SIZE / 2 - 9;
-            const candidates = [
-                new THREE.Vector3((Math.random() - 0.5) * limit * 2, 0, (Math.random() - 0.5) * limit * 2),
-                new THREE.Vector3(bot.team === 'CT' ? 42 : -42, 0, (Math.random() - 0.5) * 90),
-                new THREE.Vector3((Math.random() - 0.5) * 90, 0, bot.team === 'CT' ? -42 : 42)
-            ];
-            return candidates.find(p => !checkCollisions(p.x, p.z, bot.radius)) || new THREE.Vector3(0,0,0);
+            for (let i=0; i<8; i++) {
+                const p = new THREE.Vector3(bot.mesh.position.x + (Math.random()-.5)*42, 0, bot.mesh.position.z + (Math.random()-.5)*42);
+                p.x = THREE.MathUtils.clamp(p.x,-limit,limit); p.z = THREE.MathUtils.clamp(p.z,-limit,limit);
+                if (!checkCollisions(p.x,p.z,bot.radius)) return p;
+            }
+            const safe = nearestNavNode(bot.mesh.position);
+            return safe ? safe.position.clone() : new THREE.Vector3(0,0,0);
         }
 
         function steerBot(bot, desired, delta, speedScale = 1) {
             const old = bot.mesh.position.clone();
-            const toTarget = new THREE.Vector3(desired.x - old.x, 0, desired.z - old.z);
-            if (toTarget.lengthSq() < 0.1) return true;
-            const dir = toTarget.normalize();
+            const dir = new THREE.Vector3(desired.x-old.x,0,desired.z-old.z);
+            if (dir.lengthSq() < .1) return true;
+            dir.normalize();
             const separation = new THREE.Vector3();
             bots.forEach(other => {
-                if (other !== bot && other.isAlive) {
-                    const d = bot.mesh.position.distanceTo(other.mesh.position);
-                    if (d > 0.01 && d < 2.2) separation.add(new THREE.Vector3().subVectors(bot.mesh.position, other.mesh.position).normalize().multiplyScalar((2.2 - d) / 2.2));
-                }
+                if (other === bot || !other.isAlive) return;
+                const d = bot.mesh.position.distanceTo(other.mesh.position);
+                if (d > .01 && d < 2.6) separation.add(new THREE.Vector3().subVectors(bot.mesh.position,other.mesh.position).normalize().multiplyScalar((2.6-d)/2.6));
             });
-            const combined = dir.add(separation.multiplyScalar(1.2)).normalize();
-            bot.mesh.lookAt(old.x + combined.x, bot.mesh.position.y, old.z + combined.z);
-            const step = bot.speed * speedScale * delta;
-            const attempts = [combined, new THREE.Vector3(-combined.z,0,combined.x), new THREE.Vector3(combined.z,0,-combined.x), dir.clone().negate()];
+            const scan = bot.localScan;
+            const obstacleBias = new THREE.Vector3();
+            if (scan.front < 3.2) obstacleBias.add(new THREE.Vector3(-dir.z,0,dir.x).multiplyScalar(scan.left > scan.right ? 1.6 : -1.6));
+            if (scan.frontLeft < 2.2) obstacleBias.add(new THREE.Vector3(dir.z,0,-dir.x));
+            if (scan.frontRight < 2.2) obstacleBias.add(new THREE.Vector3(-dir.z,0,dir.x));
+            const combined = dir.clone().add(separation.multiplyScalar(1.5)).add(obstacleBias).normalize();
+            bot.mesh.lookAt(old.x+combined.x, bot.mesh.position.y, old.z+combined.z);
+            const step = bot.speed * speedScale * (scan.front < 4 ? .55 : 1) * delta;
+            const attempts = [combined, new THREE.Vector3(-combined.z,0,combined.x), new THREE.Vector3(combined.z,0,-combined.x)];
             for (const attempt of attempts) {
-                const nx = old.x + attempt.x * step;
-                const nz = old.z + attempt.z * step;
-                const crowdsBot = bots.some(other => other !== bot && other.isAlive && Math.hypot(other.mesh.position.x - nx, other.mesh.position.z - nz) < bot.radius + other.radius);
-                if (!checkCollisions(nx, nz, bot.radius) && !crowdsBot) {
-                    bot.mesh.position.x = THREE.MathUtils.clamp(nx, -MAP_SIZE/2+3, MAP_SIZE/2-3);
-                    bot.mesh.position.z = THREE.MathUtils.clamp(nz, -MAP_SIZE/2+3, MAP_SIZE/2-3);
-                    return true;
-                }
-            }
-            if (Date.now() > bot.routeChangeAt) {
-                const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar((Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 8));
-                bot.waypoint = old.clone().add(side);
-                if (checkCollisions(bot.waypoint.x, bot.waypoint.z, bot.radius)) bot.waypoint = getPatrolPoint(bot);
-                bot.routeChangeAt = Date.now() + 900;
+                const nx=old.x+attempt.x*step, nz=old.z+attempt.z*step;
+                const crowded=bots.some(other=>other!==bot&&other.isAlive&&Math.hypot(other.mesh.position.x-nx,other.mesh.position.z-nz)<bot.radius+other.radius+.18);
+                if (!checkCollisions(nx,nz,bot.radius) && !crowded) { bot.mesh.position.set(THREE.MathUtils.clamp(nx,-MAP_SIZE/2+3,MAP_SIZE/2-3),0,THREE.MathUtils.clamp(nz,-MAP_SIZE/2+3,MAP_SIZE/2-3)); return true; }
             }
             return false;
         }
 
         function damagePlayerByBot(bot) {
-            player.hp -= bot.weapon.damage * 0.6;
-            updateHUD();
-            if (player.hp <= 0) {
-                addKillFeed(`${bot.name}`, `${player.name}`);
-                addScore(bot.team);
-                playerDied();
-            }
+            player.hp -= bot.weapon.damage * .6; updateHUD();
+            if (player.hp <= 0) { addKillFeed(bot.name,player.name); addScore(bot.team); playerDied(); }
         }
 
         function botShoot(bot, enemy, now) {
-            if (!enemy || !enemy.visible || bot.ammo <= 0 || now - bot.lastShoot < bot.shootDelay) return;
-            bot.lastShoot = now; bot.ammo--; registerSound(bot.mesh.position, bot.team, 1.5);
-            const botMuzzle = bot.mesh.position.clone().add(new THREE.Vector3(0, 1.3, 0));
-            const targetPos = enemy.position.clone();
-            if (enemy.isPlayer) targetPos.y -= 0.3;
-            const spreadFactor = enemy.distance * 0.018;
-            targetPos.x += (Math.random() - 0.5) * spreadFactor;
-            targetPos.z += (Math.random() - 0.5) * spreadFactor;
-            createBulletTracer(botMuzzle, targetPos, 0xff3333);
+            const requiredReaction = enemy?.distance <= AI_PERCEPTION.immediateRadius ? Math.min(80, bot.reactionMs) : bot.reactionMs;
+            if (!enemy?.visible || bot.ammo <= 0 || now-bot.lastShoot < bot.shootDelay || now-bot.targetVisibleSince < requiredReaction) return;
+            const eye=bot.mesh.position.clone().add(new THREE.Vector3(0,1.3,0));
+            const target=enemy.position.clone(); if (!hasLineOfSight(eye,target.clone().add(new THREE.Vector3(0,enemy.isPlayer?0:1.1,0)))) return;
+            bot.lastShoot=now; bot.ammo--; registerSound(bot.mesh.position,bot.team,1.5);
+            const moving = bot.mesh.position.distanceTo(bot.lastPos) > .03;
+            const hitChance = THREE.MathUtils.clamp(.92-enemy.distance*.012-(moving?.14:0),.22,.9);
+            const error=(1-hitChance)*enemy.distance*.09;
+            target.x+=(Math.random()-.5)*error; target.z+=(Math.random()-.5)*error;
+            createBulletTracer(eye,target,0xff3333);
+            if (Math.random()>hitChance) return;
             if (enemy.isPlayer) damagePlayerByBot(bot);
-            else if (enemy.bot) {
-                enemy.bot.hp -= bot.weapon.damage;
-                if (enemy.bot.hp <= 0) { addKillFeed(`${bot.name}`, `${enemy.bot.name}`); addScore(bot.team); respawnBot(enemy.bot); }
-            }
+            else if (enemy.bot) { enemy.bot.hp-=bot.weapon.damage; if(enemy.bot.hp<=0){ addKillFeed(bot.name,enemy.bot.name); addScore(bot.team); respawnBot(enemy.bot); } }
+        }
+
+        function recoverStuck(bot, destination, now) {
+            setBotState(bot,AI_STATES.RECOVER_STUCK,now); bot.recoveryAttempts++; bot.navRoute=[]; bot.navGoal=null;
+            const forward=getBotForward(bot), scan=bot.localScan;
+            const side=new THREE.Vector3(-forward.z,0,forward.x).multiplyScalar(scan.left>=scan.right?1:-1);
+            const escape=bot.mesh.position.clone().addScaledVector(forward,-2.5).addScaledVector(side,3+bot.recoveryAttempts);
+            bot.waypoint=checkCollisions(escape.x,escape.z,bot.radius)?getPatrolPoint(bot):escape;
+            bot.blockedDirections.push({ pos:destination.clone(), until:now+6000 });
+            bot.blockedDirections=bot.blockedDirections.filter(v=>v.until>now).slice(-4);
+            bot.progressAnchor.copy(bot.mesh.position); bot.lastProgressAt=now; bot.coverPos=null;
+            if(bot.recoveryAttempts>=3){ bot.targetPos=getPatrolPoint(bot); bot.waypoint=bot.targetPos.clone(); bot.recoveryAttempts=0; }
         }
 
         function updateAI(bot, delta, now) {
             if (gameFrozen || !bot.isAlive) return;
-            const enemy = findEnemy(bot);
-            for (let i = aiSoundEvents.length - 1; i >= 0; i--) {
-                const snd = aiSoundEvents[i];
-                if (now - snd.time > 3500 || snd.team === bot.team) continue;
-                if (bot.mesh.position.distanceTo(snd.pos) < 26 * snd.power) { bot.heardPos = snd.pos.clone(); bot.investigateUntil = now + 3200; break; }
+            scanLocalEnvironment(bot,now);
+            const enemy=findVisibleEnemy(bot);
+            if(enemy){
+                const newlySeen=now-bot.lastSeenAt>900;
+                rememberVisibleEnemy(bot,enemy,now);
+                if(newlySeen){ setBotState(bot,AI_STATES.ALERT,now); alertNearbyAllies(bot,now); }
+                else if(now-bot.targetVisibleSince>=bot.reactionMs) setBotState(bot,AI_STATES.COMBAT,now);
+            } else { bot.targetVisibleSince=0; }
+            for(let i=aiSoundEvents.length-1;i>=0&&!enemy;i--){
+                const snd=aiSoundEvents[i]; if(now-snd.time>3500||snd.team===bot.team) continue;
+                if(bot.mesh.position.distanceTo(snd.pos)<26*snd.power){ bot.heardPos=snd.pos.clone().add(new THREE.Vector3((Math.random()-.5)*2,0,(Math.random()-.5)*2)); bot.investigateUntil=now+3800; if([AI_STATES.IDLE,AI_STATES.PATROL].includes(bot.state)) setBotState(bot,AI_STATES.SUSPICIOUS,now); break; }
             }
-            if (enemy && enemy.visible) {
-                bot.lastKnownEnemyPos = enemy.position.clone();
-                bots.forEach(ally => { if (ally !== bot && ally.team === bot.team && ally.mesh.position.distanceTo(bot.mesh.position) < 28) ally.lastKnownEnemyPos = enemy.position.clone(); });
-            }
-
-            let destination = null, speedScale = 0.8;
-            if (enemy && enemy.distance < 58) {
-                if (bot.hp < 35 || bot.ammo <= Math.max(1, bot.maxAmmo * 0.2)) {
-                    bot.coverPos = bot.coverPos || chooseCover(bot, enemy.position);
-                    destination = bot.coverPos || getPatrolPoint(bot);
-                    bot.state = bot.hp < 35 ? 'retreat-cover' : 'reload-cover'; speedScale = 1.05;
-                    if (bot.ammo <= 0 && bot.mesh.position.distanceTo(destination) < 3) bot.ammo = bot.maxAmmo;
-                } else if (!enemy.visible && bot.lastKnownEnemyPos) {
-                    destination = bot.lastKnownEnemyPos; bot.state = 'hunt-last-known'; speedScale = 0.95;
-                } else {
-                    const toEnemy = new THREE.Vector3().subVectors(enemy.position, bot.mesh.position).normalize();
-                    const flank = new THREE.Vector3(-toEnemy.z,0,toEnemy.x).multiplyScalar(bot.flankSide * (enemy.distance > 12 ? 6 : 3));
-                    destination = enemy.position.clone().add(flank).addScaledVector(toEnemy, enemy.distance < 9 ? -10 : -5);
-                    bot.state = 'engage-flank'; speedScale = 0.9;
-                    botShoot(bot, enemy, now);
-                }
-            } else if (bot.heardPos && now < bot.investigateUntil) {
-                destination = bot.heardPos; bot.state = 'investigate-sound'; speedScale = 0.9;
+            let destination=null, speedScale=.72;
+            if(enemy){
+                if(bot.hp<35){ bot.coverPos=bot.coverPos||chooseCover(bot,enemy.position); destination=bot.coverPos||bot.mesh.position.clone().addScaledVector(getBotForward(bot),-6); speedScale=1; }
+                else { const toward=new THREE.Vector3().subVectors(enemy.position,bot.mesh.position).setY(0).normalize(); const lateral=new THREE.Vector3(-toward.z,0,toward.x).multiplyScalar(bot.strafeDir*(enemy.distance<AI_PERCEPTION.immediateRadius?5:3)); destination=bot.mesh.position.clone().add(lateral).addScaledVector(toward,enemy.distance<5?-3:1); speedScale=.82; botShoot(bot,enemy,now); }
+            } else if(bot.state===AI_STATES.SUSPICIOUS && now-bot.stateSince<650){ destination=bot.mesh.position.clone().addScaledVector(getBotForward(bot),.1); speedScale=0; }
+            else if(bot.heardPos&&now<bot.investigateUntil){ setBotState(bot,AI_STATES.INVESTIGATE,now); destination=bot.heardPos; speedScale=.78; }
+            else if(bot.lastKnownEnemyPos&&now-bot.lastSeenAt<AI_PERCEPTION.memoryMs){
+                setBotState(bot,AI_STATES.INVESTIGATE,now); const age=(now-bot.lastSeenAt)/AI_PERCEPTION.memoryMs; const error=.5+age*1.5; destination=bot.lastKnownEnemyPos.clone().add(new THREE.Vector3(Math.sin(bot.stateSince)*error,0,Math.cos(bot.stateSince)*error)); speedScale=.82;
+            } else if(bot.lastKnownEnemyPos&&now<bot.searchUntil){
+                setBotState(bot,AI_STATES.SEARCH,now); if(!bot.targetPos||bot.mesh.position.distanceTo(bot.targetPos)<2) bot.targetPos=bot.lastKnownEnemyPos.clone().add(new THREE.Vector3((Math.random()-.5)*12,0,(Math.random()-.5)*12)); destination=bot.targetPos; speedScale=.58;
             } else {
-                if (!bot.targetPos || bot.mesh.position.distanceTo(bot.targetPos) < 3 || checkCollisions(bot.targetPos.x, bot.targetPos.z, bot.radius)) bot.targetPos = getPatrolPoint(bot);
-                destination = bot.targetPos; bot.state = 'patrol-map'; speedScale = 0.72;
+                bot.lastKnownEnemyPos=null; bot.heardPos=null;
+                if(now<bot.idleUntil){ setBotState(bot,AI_STATES.IDLE,now); bot.mesh.rotation.y+=delta*.25; return; }
+                setBotState(bot,AI_STATES.PATROL,now);
+                if(!bot.targetPos||bot.mesh.position.distanceTo(bot.targetPos)<2.5||checkCollisions(bot.targetPos.x,bot.targetPos.z,bot.radius)){ bot.targetPos=getPatrolPoint(bot); bot.idleUntil=now+500+Math.random()*1200; }
+                destination=bot.targetPos;
             }
-
-            /* Recalcula A* somente quando o objetivo muda; percorre waypoints visíveis em sequência. */
-            if (!bot.navGoal || bot.navGoal.distanceToSquared(destination) > 36 || !bot.navRoute.length) {
-                bot.navGoal = destination.clone();
-                bot.navRoute = findWaypointRoute(bot.mesh.position, destination);
-            }
-            while (bot.navRoute.length && bot.mesh.position.distanceTo(bot.navRoute[0]) < 2.2) bot.navRoute.shift();
-            if (bot.waypoint && bot.mesh.position.distanceTo(bot.waypoint) > 2) destination = bot.waypoint;
-            else { bot.waypoint = null; if (bot.navRoute.length) destination = bot.navRoute[0]; }
-            steerBot(bot, destination, delta, speedScale);
-
-            if (bot.mesh.position.distanceTo(bot.lastPos) < 0.02) {
-                bot.stuckTime += delta;
-                if (bot.stuckTime > 0.45) {
-                    bot.recoveryAttempts++;
-                    bot.navRoute = [];
-                    const escapeAngle = (bot.recoveryAttempts % 4) * Math.PI / 2 + Math.random() * 0.35;
-                    bot.waypoint = bot.mesh.position.clone().add(new THREE.Vector3(Math.cos(escapeAngle) * 7, 0, Math.sin(escapeAngle) * 7));
-                    if (checkCollisions(bot.waypoint.x, bot.waypoint.z, bot.radius)) bot.waypoint = getPatrolPoint(bot);
-                    bot.coverPos = null;
-                    bot.flankSide *= -1;
-                    bot.routeChangeAt = 0;
-                    /* Pequeno recuo libera quinas antes de tentar a nova rota. */
-                    const escape = new THREE.Vector3().subVectors(bot.mesh.position, destination).setY(0).normalize().multiplyScalar(0.8);
-                    const ex = bot.mesh.position.x + escape.x, ez = bot.mesh.position.z + escape.z;
-                    if (!checkCollisions(ex, ez, bot.radius)) bot.mesh.position.set(ex, 0, ez);
-                    bot.stuckTime = 0;
-                    /* Último recurso determinístico: reposiciona em nó livre, sem manter o bot preso. */
-                    if (bot.recoveryAttempts >= 4) {
-                        const safe = nearestNavNode(bot.mesh.position);
-                        if (safe) bot.mesh.position.copy(safe.position);
-                        bot.navRoute = []; bot.waypoint = null; bot.recoveryAttempts = 0;
-                    }
-                }
-            } else { bot.stuckTime = 0; bot.recoveryAttempts = 0; }
+            if(!destination) return;
+            if(!bot.navGoal||bot.navGoal.distanceToSquared(destination)>25||!bot.navRoute.length){ bot.navGoal=destination.clone(); bot.navRoute=findWaypointRoute(bot.mesh.position,destination); }
+            while(bot.navRoute.length&&bot.mesh.position.distanceTo(bot.navRoute[0])<2.2) bot.navRoute.shift();
+            if(bot.waypoint&&bot.mesh.position.distanceTo(bot.waypoint)>1.8) destination=bot.waypoint;
+            else { bot.waypoint=null; if(bot.navRoute.length) destination=bot.navRoute[0]; }
+            steerBot(bot,destination,delta,speedScale);
+            if(bot.mesh.position.distanceTo(bot.progressAnchor)>.7){ bot.progressAnchor.copy(bot.mesh.position); bot.lastProgressAt=now; if(bot.state!==AI_STATES.RECOVER_STUCK) bot.recoveryAttempts=0; }
+            else if(now-bot.lastProgressAt>1800) recoverStuck(bot,destination,now);
             bot.lastPos.copy(bot.mesh.position);
         }
 
@@ -2118,6 +2217,7 @@
                 matchState.inRound = false;
                 gameFrozen = true;
                 const tWon = !ctAlive || scoreT > scoreCT || (selectedMode === 'BOMB' && bombState.planted && Date.now() >= matchState.roundEndsAt);
+                if (selectedMode === 'BOMB') economyState.pendingWinner = tWon ? 'T' : 'CT';
                 if (tWon) matchState.tWins++; else matchState.ctWins++;
                 const requiredWins = Math.floor(matchSettings.rounds / 2) + 1;
                 const matchOver = matchState.tWins >= requiredWins || matchState.ctWins >= requiredWins || matchState.currentRound >= matchSettings.rounds;
