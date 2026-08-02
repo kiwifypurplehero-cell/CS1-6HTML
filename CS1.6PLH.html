@@ -254,6 +254,12 @@
         #spectator-overlay { position:absolute; left:50%; bottom:96px; transform:translateX(-50%); z-index:12; display:none; text-align:center; color:white; background:rgba(0,0,0,0.62); border:1px solid rgba(255,255,255,0.28); border-radius:10px; padding:10px 16px; pointer-events:none; min-width:280px; }
         #spectator-name { color:#f1c40f; font-size:18px; font-weight:bold; margin-top:4px; }
         #round-info { background:rgba(0,0,0,0.6); padding:8px 12px; border-radius:6px; color:#2ecc71; font-weight:bold; }
+        #loading-cinematic { position:absolute; inset:0; z-index:150; display:none; overflow:hidden; background:#05070a; color:white; }
+        #loading-cinematic.active { display:block; }
+        #loading-cinematic .cinema-pan { position:absolute; inset:-12%; background:linear-gradient(115deg,rgba(0,0,0,.72),rgba(0,0,0,.12)), radial-gradient(circle at 65% 40%,#b38a50,#2b3940 42%,#080b10 72%); animation:cinemaPan 3.2s ease-in-out both; }
+        #loading-cinematic .loading-copy { position:absolute; left:7%; bottom:12%; text-shadow:0 2px 8px #000; }
+        #loading-cinematic strong { display:block; color:#de9b35; font-size:30px; letter-spacing:3px; }
+        @keyframes cinemaPan { from{transform:scale(1.18) translateX(-4%)} to{transform:scale(1.03) translateX(3%)} }
 
         /* CS Style Main Menu Overlay */
         #menu-overlay {
@@ -525,6 +531,7 @@
 <body>
 
     <div id="game-container">
+        <div id="loading-cinematic"><div class="cinema-pan"></div><div class="loading-copy"><strong>CARREGANDO OPERAÇÃO</strong><span id="loading-map-name">Preparando mapa e bots...</span></div></div>
         <!-- CS Main Navigation Menu Overlay -->
         <div id="menu-overlay">
             <div class="cs-title">CS1.6PLH</div>
@@ -554,8 +561,11 @@
                     <div class="btn-group">
                         <button class="opt-btn active" id="btn-mode-tdm" onclick="setMode('TDM')">Team Deathmatch (TDM)</button>
                         <button class="opt-btn" id="btn-mode-dm" onclick="setMode('DM')">Deathmatch (DM)</button>
+                        <button class="opt-btn" id="btn-mode-bomb" onclick="setMode('BOMB')">Bomb</button>
                     </div>
                 </div>
+
+                <div class="menu-section"><h3>MAPA</h3><select id="cfg-map" onchange="setMap(this.value)" style="width:100%;padding:8px;background:#1f2937;color:white"><option value="DUST">Dust Arena</option><option value="NIGHT">Night Yard</option><option value="INDUSTRIAL">Industrial</option></select></div>
 
                 <!-- TDM Team Select -->
                 <div class="menu-section" id="tdm-section">
@@ -569,8 +579,8 @@
                 <div class="menu-section" id="tdm-config-section">
                     <h3>CONFIGURAÇÕES DA PARTIDA TDM</h3>
                     <div class="match-config-grid">
-                        <label>RODADAS
-                            <select id="cfg-rounds" onchange="updateMatchSetting('rounds', this.value)"><option>3</option><option selected>5</option><option>7</option><option>10</option></select>
+                        <label>MELHOR DE
+                            <select id="cfg-rounds" onchange="updateMatchSetting('rounds', this.value)"><option>3</option><option selected>5</option><option>7</option></select>
                         </label>
                         <label>TEMPO
                             <select id="cfg-round-time" onchange="updateMatchSetting('roundTime', this.value)"><option value="60">1 min</option><option value="120" selected>2 min</option><option value="180">3 min</option><option value="300">5 min</option></select>
@@ -586,6 +596,7 @@
 
                 <!-- DM Options -->
                 <div class="menu-section" id="dm-section" style="display:none;">
+                    <h3>TEMPO DE PARTIDA</h3><select id="cfg-dm-time" onchange="updateMatchSetting('dmTime',this.value)" style="width:100%;padding:8px;background:#1f2937;color:white"><option value="180">3 min</option><option value="300" selected>5 min</option><option value="600">10 min</option></select>
                     <h3>COR DO JOGADOR (DM)</h3>
                     <div class="color-picker-container" id="color-picker"></div>
 
@@ -775,13 +786,15 @@
 
         let selectedMode = 'TDM';
         let selectedTeam = 'CT';
+        let selectedMap = 'DUST';
         let playerDmColor = DM_COLORS[0];
         let selectedWeaponKey = 'Glock';
         let selectedCrosshair = 'cross';
         let crosshairScale = 1.0;
         let gameFrozen = true;
-        const matchSettings = { rounds: 5, roundTime: 120, killLimit: 10, botCount: 8 };
-        const matchState = { currentRound: 1, roundStartedAt: 0, roundEndsAt: 0, inRound: false };
+        const matchSettings = { rounds: 5, roundTime: 120, dmTime: 300, killLimit: 10, botCount: 8 };
+        const matchState = { currentRound: 1, roundStartedAt: 0, roundEndsAt: 0, inRound: false, ctWins: 0, tWins: 0 };
+        const bombState = { planted: false, plantedAt: 0, carrier: null, site: null };
         const spectatorState = { active: false, targetIndex: 0 };
         const aiSoundEvents = [];
         const coverPoints = [];
@@ -899,11 +912,18 @@
             selectedMode = mode;
             document.getElementById('btn-mode-tdm').classList.toggle('active', mode === 'TDM');
             document.getElementById('btn-mode-dm').classList.toggle('active', mode === 'DM');
-            document.getElementById('tdm-section').style.display = mode === 'TDM' ? 'block' : 'none';
-            document.getElementById('tdm-config-section').style.display = mode === 'TDM' ? 'block' : 'none';
+            document.getElementById('btn-mode-bomb').classList.toggle('active', mode === 'BOMB');
+            document.getElementById('tdm-section').style.display = mode !== 'DM' ? 'block' : 'none';
+            document.getElementById('tdm-config-section').style.display = mode !== 'DM' ? 'block' : 'none';
             document.getElementById('dm-section').style.display = mode === 'DM' ? 'block' : 'none';
-            document.getElementById('scoreboard-box').style.display = mode === 'TDM' ? 'flex' : 'none';
+            document.getElementById('scoreboard-box').style.display = mode !== 'DM' ? 'flex' : 'none';
             document.getElementById('mode-display').innerText = `MODO: ${mode}`;
+        }
+
+        function setMap(map) {
+            selectedMap = map;
+            const themes = { DUST:[0x87ceeb,0x4e6e3e], NIGHT:[0x111827,0x263238], INDUSTRIAL:[0x9aa4ad,0x59636b] };
+            scene.background.setHex(themes[map][0]); groundMat.color.setHex(themes[map][1]);
         }
 
         function setTeam(team) {
@@ -1126,10 +1146,15 @@
         buildMap();
 
         function buildNavigationGraph() {
+            /* A malha nasce em tempo real a partir da geometria atualmente carregada. */
+            NAV_NODES.length = 0;
+            for (let x = -54; x <= 54; x += 9) for (let z = -54; z <= 54; z += 9) {
+                if (!checkCollisions(x, z, 0.72)) NAV_NODES.push({ id: NAV_NODES.length, position:new THREE.Vector3(x,0,z), links:[] });
+            }
             NAV_NODES.forEach(node => { node.links.length = 0; });
             NAV_NODES.forEach((node, index) => NAV_NODES.slice(index + 1).forEach(other => {
                 const distance = node.position.distanceTo(other.position);
-                if (distance <= 25 && hasLineOfSight(node.position.clone().setY(1), other.position.clone().setY(1))) {
+                if (distance <= 13 && hasLineOfSight(node.position.clone().setY(1), other.position.clone().setY(1))) {
                     node.links.push(other.id); other.links.push(node.id);
                 }
             }));
@@ -1245,10 +1270,10 @@
             glockMagazineMesh = null;
             slideMesh = null;
             const viewProfiles = {
-                Glock:  { scale: 1.55, position: [0.22,-0.25,-0.58], rotation: [0.02,-0.05,0] },
-                AK47:   { scale: 1.45, position: [0.25,-0.28,-0.66], rotation: [0.01,-0.04,0] },
-                AWP:    { scale: 1.25, position: [0.22,-0.27,-0.72], rotation: [0,-0.03,0] },
-                Shotgun:{ scale: 1.35, position: [0.24,-0.29,-0.68], rotation: [0,-0.04,0] }
+                Glock:  { scale: 0.775, position: [0.22,-0.25,-0.58], rotation: [0.02,-0.05,0] },
+                AK47:   { scale: 0.725, position: [0.25,-0.28,-0.66], rotation: [0.01,-0.04,0] },
+                AWP:    { scale: 0.625, position: [0.22,-0.27,-0.72], rotation: [0,-0.03,0] },
+                Shotgun:{ scale: 0.675, position: [0.24,-0.29,-0.68], rotation: [0,-0.04,0] }
             };
             const profile = viewProfiles[weaponName] || viewProfiles.Glock;
             const model = buildLowPolyWeaponModel(weaponName, profile.scale, false);
@@ -1271,7 +1296,7 @@
 
         function createBotWeaponMesh(weaponName) {
             const normalized = weaponName === 'AK-47' ? 'AK47' : (weaponName === 'Escopeta' ? 'Shotgun' : weaponName);
-            const wGroup = buildLowPolyWeaponModel(normalized, 0.8, true);
+            const wGroup = buildLowPolyWeaponModel(normalized, 0.4, true);
             wGroup.position.set(0.45, 1.12, 0.25);
             wGroup.rotation.y = Math.PI / 2;
             return wGroup;
@@ -1300,10 +1325,12 @@
 
         function startGame() {
             requestMobileFullscreen();
-
+            const loading = document.getElementById('loading-cinematic');
+            document.getElementById('loading-map-name').innerText = `${document.getElementById('cfg-map').selectedOptions[0].text} • gerando navegação dinâmica`;
+            loading.classList.add('active');
             document.getElementById('menu-overlay').style.display = 'none';
 
-            if (selectedMode === 'TDM') {
+            if (selectedMode !== 'DM') {
                 player.weapon = WEAPONS['Glock'];
                 player.team = selectedTeam;
                 player.colorHex = selectedTeam === 'CT' ? 0x2980b9 : 0xc0392b;
@@ -1324,7 +1351,8 @@
                 document.body.requestPointerLock();
             }
 
-            initMatch();
+            gameFrozen = true;
+            setTimeout(() => { buildNavigationGraph(); initMatch(); loading.classList.remove('active'); }, 1800);
         }
 
         document.addEventListener('mousemove', (e) => {
@@ -1706,12 +1734,13 @@
             const remaining = Math.max(0, Math.ceil((matchState.roundEndsAt - Date.now()) / 1000));
             const mins = String(Math.floor(remaining / 60)).padStart(2, '0');
             const secs = String(remaining % 60).padStart(2, '0');
-            el.innerText = selectedMode === 'TDM' ? `RODADA ${matchState.currentRound}/${matchSettings.rounds} • ${mins}:${secs} • LIMITE ${matchSettings.killLimit}` : 'DEATHMATCH LIVRE';
+            el.innerText = selectedMode !== 'DM' ? `RODADA ${matchState.currentRound}/${matchSettings.rounds} • ${mins}:${secs}${selectedMode === 'BOMB' ? (bombState.planted ? ' • BOMBA PLANTADA' : ' • PROTEJA/ARME') : ` • LIMITE ${matchSettings.killLimit}`}` : `DM • ${mins}:${secs}`;
         }
 
         function initMatch() {
             scoreCT = 0; scoreT = 0;
             matchState.currentRound = 1;
+            matchState.ctWins = 0; matchState.tWins = 0;
             startRound(true);
         }
 
@@ -1733,7 +1762,7 @@
                 { x: -spawnBound + 16, z: -4 }, { x: -spawnBound + 16, z: 16 }, { x: -spawnBound + 22, z: -20 }
             ];
 
-            if (selectedMode === 'TDM') {
+            if (selectedMode !== 'DM') {
                 gameFrozen = true;
                 const playerSpawns = player.team === 'CT' ? ctSpawns : tSpawns;
                 const pPos = playerSpawns.pop();
@@ -1754,6 +1783,8 @@
                 matchState.roundStartedAt = Date.now();
                 matchState.roundEndsAt = matchState.roundStartedAt + matchSettings.roundTime * 1000;
                 matchState.inRound = true;
+                bombState.planted = false; bombState.plantedAt = 0; bombState.site = null;
+                bombState.carrier = player.team === 'T' ? player : bots.find(b => b.team === 'T');
                 start5sCountdown();
             } else {
                 gameFrozen = false;
@@ -1767,6 +1798,9 @@
                     const randomWeaponKey = weaponKeys[Math.floor(Math.random() * weaponKeys.length)];
                     createBot('DM', `Bot ${botColor.name}`, botColor.hex, (Math.random() - 0.5) * (MAP_SIZE - 20), (Math.random() - 0.5) * (MAP_SIZE - 20), WEAPONS[randomWeaponKey]);
                 }
+                matchState.roundStartedAt = Date.now();
+                matchState.roundEndsAt = matchState.roundStartedAt + matchSettings.dmTime * 1000;
+                matchState.inRound = true;
             }
             player.hp = 100;
             player.isAlive = true;
@@ -1790,7 +1824,7 @@
         }
 
         function respawnBot(bot) {
-            if (selectedMode === 'TDM') {
+            if (selectedMode !== 'DM') {
                 bot.isAlive = false;
                 bot.mesh.visible = false;
                 return;
@@ -2014,6 +2048,12 @@
                     const ex = bot.mesh.position.x + escape.x, ez = bot.mesh.position.z + escape.z;
                     if (!checkCollisions(ex, ez, bot.radius)) bot.mesh.position.set(ex, 0, ez);
                     bot.stuckTime = 0;
+                    /* Último recurso determinístico: reposiciona em nó livre, sem manter o bot preso. */
+                    if (bot.recoveryAttempts >= 4) {
+                        const safe = nearestNavNode(bot.mesh.position);
+                        if (safe) bot.mesh.position.copy(safe.position);
+                        bot.navRoute = []; bot.waypoint = null; bot.recoveryAttempts = 0;
+                    }
                 }
             } else { bot.stuckTime = 0; bot.recoveryAttempts = 0; }
             bot.lastPos.copy(bot.mesh.position);
@@ -2053,18 +2093,39 @@
         }
 
         function checkRoundRules() {
-            if (selectedMode !== 'TDM' || gameFrozen || !matchState.inRound) return;
+            if (gameFrozen || !matchState.inRound) return;
             updateRoundInfo();
+            if (selectedMode === 'DM') {
+                if (Date.now() >= matchState.roundEndsAt) { matchState.inRound = false; gameFrozen = true; document.getElementById('countdown-banner').style.display='block'; document.getElementById('countdown-banner').innerText='TEMPO ESGOTADO'; setTimeout(pauseGameAndMenu,2200); }
+                return;
+            }
             const tAlive = bots.some(b => b.team === 'T' && b.isAlive) || (player.team === 'T' && player.isAlive);
             const ctAlive = bots.some(b => b.team === 'CT' && b.isAlive) || (player.team === 'CT' && player.isAlive);
-            if (Date.now() >= matchState.roundEndsAt || scoreT >= matchSettings.killLimit || scoreCT >= matchSettings.killLimit || !tAlive || !ctAlive) {
+            if (selectedMode === 'BOMB') {
+                const carrier = bombState.carrier;
+                const carrierPos = carrier === player ? camera.position : carrier?.mesh?.position;
+                const sites = [new THREE.Vector3(-48,0,48),new THREE.Vector3(45,0,-45)];
+                if (!bombState.planted && carrierPos) {
+                    const site = sites.find(s => s.distanceTo(carrierPos) < 6);
+                    if (site) { bombState.planted=true; bombState.plantedAt=Date.now(); bombState.site=site; matchState.roundEndsAt=Date.now()+40000; }
+                }
+                if (bombState.planted) {
+                    const defender = bots.find(b=>b.team==='CT'&&b.isAlive&&b.mesh.position.distanceTo(bombState.site)<3);
+                    if ((player.team==='CT'&&player.isAlive&&camera.position.distanceTo(bombState.site)<3) || defender) matchState.roundEndsAt = Math.min(matchState.roundEndsAt, Date.now()+5000);
+                }
+            }
+            if (Date.now() >= matchState.roundEndsAt || (selectedMode === 'TDM' && (scoreT >= matchSettings.killLimit || scoreCT >= matchSettings.killLimit)) || !tAlive || (!ctAlive && !bombState.planted)) {
                 matchState.inRound = false;
                 gameFrozen = true;
+                const tWon = !ctAlive || scoreT > scoreCT || (selectedMode === 'BOMB' && bombState.planted && Date.now() >= matchState.roundEndsAt);
+                if (tWon) matchState.tWins++; else matchState.ctWins++;
+                const requiredWins = Math.floor(matchSettings.rounds / 2) + 1;
+                const matchOver = matchState.tWins >= requiredWins || matchState.ctWins >= requiredWins || matchState.currentRound >= matchSettings.rounds;
                 const banner = document.getElementById('countdown-banner');
                 banner.style.display = 'block';
-                banner.innerText = matchState.currentRound >= matchSettings.rounds ? 'PARTIDA ENCERRADA' : 'NOVA RODADA';
+                banner.innerText = matchOver ? `PARTIDA ENCERRADA • CT ${matchState.ctWins} x ${matchState.tWins} TR` : `NOVA RODADA • CT ${matchState.ctWins} x ${matchState.tWins} TR`;
                 setTimeout(() => {
-                    if (matchState.currentRound >= matchSettings.rounds) pauseGameAndMenu();
+                    if (matchOver) pauseGameAndMenu();
                     else { matchState.currentRound++; startRound(false); }
                 }, 2200);
             }
