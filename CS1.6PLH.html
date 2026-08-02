@@ -251,6 +251,11 @@
         .match-config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
         .match-config-grid label { font-size: 12px; color: #cbd5e1; display: flex; flex-direction: column; gap: 4px; }
         .match-config-grid select { background:#1f2937; color:white; border:1px solid #4b5563; border-radius:4px; padding:7px; font-weight:bold; }
+        #preparation-overlay { position:absolute; inset:0; z-index:90; display:none; align-items:center; justify-content:center; background:rgba(7,10,14,.72); color:white; pointer-events:auto; }
+        .prep-card { width:min(520px,92vw); padding:24px; border:1px solid #59697c; border-left:5px solid #de9b35; border-radius:8px; background:rgba(18,22,30,.94); text-align:center; box-shadow:0 16px 50px #000; }
+        .prep-card h2 { color:#de9b35; margin-bottom:10px; } .prep-card p { color:#cbd5e1; margin:8px 0 16px; }
+        #prep-team-actions { display:none; gap:10px; } #prep-team-actions .opt-btn { padding:14px; }
+        #loading-progress { width:100%; accent-color:#de9b35; }
         #spectator-overlay { position:absolute; left:50%; bottom:96px; transform:translateX(-50%); z-index:12; display:none; text-align:center; color:white; background:rgba(0,0,0,0.62); border:1px solid rgba(255,255,255,0.28); border-radius:10px; padding:10px 16px; pointer-events:none; min-width:280px; }
         #spectator-name { color:#f1c40f; font-size:18px; font-weight:bold; margin-top:4px; }
         #round-info { background:rgba(0,0,0,0.6); padding:8px 12px; border-radius:6px; color:#2ecc71; font-weight:bold; }
@@ -550,16 +555,21 @@
                 <h2><span>🎮 NOVO JOGO</span></h2>
                 
                 <div class="menu-section">
-                    <h3>MODO DE JOGO</h3>
+                    <h3>1. ESCOLHA DO MAPA</h3>
+                    <select id="cfg-map" aria-label="Mapa"><option value="dust-plh">Dust PLH</option></select>
+                </div>
+                <div class="menu-section">
+                    <h3>2. MODO DE JOGO</h3>
                     <div class="btn-group">
                         <button class="opt-btn active" id="btn-mode-tdm" onclick="setMode('TDM')">Team Deathmatch (TDM)</button>
                         <button class="opt-btn" id="btn-mode-dm" onclick="setMode('DM')">Deathmatch (DM)</button>
+                        <button class="opt-btn" id="btn-mode-bomb" onclick="setMode('BOMB')">Bomb</button>
                     </div>
                 </div>
 
-                <!-- TDM Team Select -->
-                <div class="menu-section" id="tdm-section">
-                    <h3>ESCOLHER EQUIPE (TDM)</h3>
+                <!-- A equipe é confirmada após o carregamento cinematográfico. -->
+                <div class="menu-section" id="tdm-section" style="display:none">
+                    <h3>EQUIPE PREFERIDA</h3>
                     <div class="btn-group">
                         <button class="opt-btn team-ct active" id="btn-team-ct" onclick="setTeam('CT')">Contra-Terroristas (CT)</button>
                         <button class="opt-btn team-t" id="btn-team-t" onclick="setTeam('T')">Terroristas (TR)</button>
@@ -567,28 +577,26 @@
                 </div>
 
                 <div class="menu-section" id="tdm-config-section">
-                    <h3>CONFIGURAÇÕES DA PARTIDA TDM</h3>
+                    <h3>3. CONFIGURAÇÕES DE RODADAS</h3>
                     <div class="match-config-grid">
-                        <label>RODADAS
-                            <select id="cfg-rounds" onchange="updateMatchSetting('rounds', this.value)"><option>3</option><option selected>5</option><option>7</option><option>10</option></select>
+                        <label>MELHOR DE
+                            <select id="cfg-rounds" onchange="updateMatchSetting('rounds', this.value)"><option>3</option><option selected>5</option><option>7</option></select>
                         </label>
-                        <label>TEMPO
-                            <select id="cfg-round-time" onchange="updateMatchSetting('roundTime', this.value)"><option value="60">1 min</option><option value="120" selected>2 min</option><option value="180">3 min</option><option value="300">5 min</option></select>
-                        </label>
-                        <label>LIMITE DE ELIMINAÇÕES
-                            <select id="cfg-kill-limit" onchange="updateMatchSetting('killLimit', this.value)"><option>5</option><option selected>10</option><option>20</option><option>30</option></select>
+                        <label>TEMPO DA RODADA
+                            <select id="cfg-round-time" onchange="updateMatchSetting('roundTime', this.value)"><option value="60">1 min</option><option value="120" selected>2 min</option><option value="180">3 min</option></select>
                         </label>
                         <label>QUANTIDADE DE BOTS
                             <select id="cfg-bot-count" onchange="updateMatchSetting('botCount', this.value)"><option>4</option><option selected>8</option><option>10</option><option>14</option></select>
                         </label>
                     </div>
+                    <p id="rounds-to-win" style="color:#cbd5e1;margin-top:8px">Máximo: 5 rodadas • 3 necessárias para vencer.</p>
                 </div>
-
                 <!-- DM Options -->
                 <div class="menu-section" id="dm-section" style="display:none;">
-                    <h3>COR DO JOGADOR (DM)</h3>
+                    <h3>DURAÇÃO TOTAL</h3>
+                    <select id="cfg-dm-duration" onchange="updateMatchSetting('dmDuration', this.value)"><option value="300">5 minutos</option><option value="600" selected>10 minutos</option><option value="900">15 minutos</option><option value="1200">20 minutos</option></select>
+                    <h3 style="margin-top:12px;">COR DO JOGADOR</h3>
                     <div class="color-picker-container" id="color-picker"></div>
-
                     <h3 style="margin-top:12px;">ESCOLHER ARMA</h3>
                     <div class="btn-group" id="weapon-picker">
                         <button class="opt-btn active" onclick="setWeapon('Glock', this)">Glock</button>
@@ -656,6 +664,8 @@
                     </section>
                     <section class="option-tab-page" data-option-page="graphics">
                         <div class="menu-section"><h3>🖥️ GRÁFICOS</h3>
+                            <div class="setting-label">CAMPO DE VISÃO (FOV): <output id="fov-value">75°</output></div>
+                            <input id="fov-setting" class="range-setting" type="range" min="60" max="110" value="75" step="1" oninput="setFov(this.value)" aria-label="Campo de visão">
                             <div class="setting-label">QUALIDADE DE SOMBRAS</div>
                             <div class="btn-group"><button class="opt-btn" onclick="setShadowQuality(false, this)">Desligadas</button><button class="opt-btn active" onclick="setShadowQuality(true, this)">Ativadas</button></div>
                             <div class="setting-label">DISTÂNCIA DA NEBLINA</div><input class="range-setting" type="range" min="0.004" max="0.025" value="0.012" step="0.001" oninput="setFogDensity(this.value)">
@@ -682,6 +692,18 @@
             </div>
         </div>
 
+        <div id="preparation-overlay" role="dialog" aria-live="polite">
+            <div class="prep-card">
+                <h2 id="prep-title">Carregando partida...</h2>
+                <p id="prep-message">Preparando sistemas.</p>
+                <progress id="loading-progress" max="6" value="0"></progress>
+                <div id="prep-team-actions">
+                    <button class="opt-btn team-ct" onclick="confirmTeam('CT')">Contra-Terroristas (CT)</button>
+                    <button class="opt-btn team-t" onclick="confirmTeam('T')">Terroristas (TR)</button>
+                </div>
+                <button id="prep-menu-button" class="btn-back-cs" style="display:none" onclick="returnToMenu()">VOLTAR AO MENU</button>
+            </div>
+        </div>
         <div id="countdown-banner">5</div>
         <div id="kill-feed"></div>
 
@@ -771,6 +793,10 @@
             'Shotgun': { damage: 18, ammo: 8, maxAmmo: 8, fireRate: 800, isSniper: false, pellets: 6, spread: 0.08, name: 'Escopeta' }
         };
 
+        const GAME_STATES = Object.freeze({ MENU:'MENU', CONFIG:'CONFIGURANDO_PARTIDA', LOADING:'CARREGANDO', CINEMATIC:'CINEMATICA', TEAM:'ESCOLHENDO_EQUIPE', WAITING:'AGUARDANDO_JOGADORES', COUNTDOWN:'CONTAGEM_REGRESSIVA', PLAYING:'JOGANDO', SPECTATOR:'ESPECTADOR', ROUND_END:'FIM_DE_RODADA', MATCH_END:'FIM_DE_PARTIDA' });
+        let gameState = GAME_STATES.MENU;
+        const MAP_CATALOG = Object.freeze({ 'dust-plh': { name:'Dust PLH', build: () => buildMap() } });
+        let selectedMap = 'dust-plh';
         let selectedMode = 'TDM';
         let selectedTeam = 'CT';
         let playerDmColor = DM_COLORS[0];
@@ -778,8 +804,8 @@
         let selectedCrosshair = 'cross';
         let crosshairScale = 1.0;
         let gameFrozen = true;
-        const matchSettings = { rounds: 5, roundTime: 120, killLimit: 10, botCount: 8 };
-        const matchState = { currentRound: 1, roundStartedAt: 0, roundEndsAt: 0, inRound: false };
+        const matchSettings = { rounds: 5, roundTime: 120, dmDuration: 600, botCount: 8 };
+        const matchState = { currentRound: 1, roundStartedAt: 0, roundEndsAt: 0, matchEndsAt: 0, inRound: false, roundWins: { CT:0, T:0 }, kills: new Map() };
         const spectatorState = { active: false, targetIndex: 0 };
         const aiSoundEvents = [];
         const coverPoints = [];
@@ -824,6 +850,7 @@
 
         function updateMatchSetting(key, value) {
             matchSettings[key] = parseInt(value, 10);
+            if (key === 'rounds') document.getElementById('rounds-to-win').textContent = `Máximo: ${matchSettings.rounds} rodadas • ${Math.floor(matchSettings.rounds / 2) + 1} necessárias para vencer.`;
             updateRoundInfo();
         }
 
@@ -841,6 +868,14 @@
             scene.fog.density = Number(value);
         }
 
+        function setFov(value) {
+            const fov = THREE.MathUtils.clamp(Number(value), 60, 110);
+            camera.fov = fov;
+            camera.updateProjectionMatrix();
+            document.getElementById('fov-value').textContent = `${fov}°`;
+            try { localStorage.setItem('cs16plh-fov', String(fov)); } catch (error) { console.warn('FOV não pôde ser salvo.', error); }
+        }
+
         function exitGame() {
             if (confirm("Deseja realmente fechar o jogo?")) {
                 window.close();
@@ -849,7 +884,7 @@
         }
 
         function pauseGameAndMenu() {
-            gameFrozen = true;
+            setGameState(GAME_STATES.MENU);
             document.getElementById('menu-overlay').style.display = 'flex';
             closeSubpanel();
             if (document.exitPointerLock) {
@@ -887,12 +922,10 @@
 
         function setMode(mode) {
             selectedMode = mode;
-            document.getElementById('btn-mode-tdm').classList.toggle('active', mode === 'TDM');
-            document.getElementById('btn-mode-dm').classList.toggle('active', mode === 'DM');
-            document.getElementById('tdm-section').style.display = mode === 'TDM' ? 'block' : 'none';
-            document.getElementById('tdm-config-section').style.display = mode === 'TDM' ? 'block' : 'none';
+            ['TDM','DM','BOMB'].forEach(name => document.getElementById(`btn-mode-${name.toLowerCase()}`).classList.toggle('active', mode === name));
+            document.getElementById('tdm-config-section').style.display = mode === 'DM' ? 'none' : 'block';
             document.getElementById('dm-section').style.display = mode === 'DM' ? 'block' : 'none';
-            document.getElementById('scoreboard-box').style.display = mode === 'TDM' ? 'flex' : 'none';
+            document.getElementById('scoreboard-box').style.display = mode === 'DM' ? 'none' : 'flex';
             document.getElementById('mode-display').innerText = `MODO: ${mode}`;
         }
 
@@ -1014,6 +1047,9 @@
         const boxMat = new THREE.MeshStandardMaterial({ color: 0xb08850, roughness: 0.7 });
 
         const MAP_SIZE = 130;
+        const NAV_CELL_SIZE = 4;
+        let navigationGrid = null;
+        let mapLoaded = false;
 
         function buildMap() {
             const ground = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), groundMat);
@@ -1088,9 +1124,92 @@
                 coverPoints.push(new THREE.Vector3(pos[0], 0, pos[2] + 3));
                 coverPoints.push(new THREE.Vector3(pos[0], 0, pos[2] - 3));
             });
+
+            /* Silhueta própria inspirada em Dust II: portões duplos, rampas e bombsites. */
+            const sandMat = new THREE.MeshStandardMaterial({ color: 0xc8a66a, roughness: 0.95 });
+            createWall(18, 5, 1.2, -46, 2.5, 30, sandMat); // long A
+            createWall(1.2, 5, 16, -18, 2.5, 34, sandMat); // catwalk
+            createWall(14, 4, 1.2, 42, 2, -34, sandMat);   // B platform
+            createWall(1.2, 5, 12, 8, 2.5, -48, sandMat);  // tunnel exit
+            const doorMat = new THREE.MeshStandardMaterial({ color: 0x6f4325, roughness: 0.9 });
+            createWall(0.8, 4.4, 6, -1.6, 2.2, 0, doorMat);
+            createWall(0.8, 4.4, 6, 1.6, 2.2, 0, doorMat); // mid doors
+            const siteMat = new THREE.MeshStandardMaterial({ color: 0xb56a3b, roughness: 1 });
+            [[-48,48],[45,-45]].forEach(([x,z]) => {
+                const site = new THREE.Mesh(new THREE.CylinderGeometry(5,5,0.08,8), siteMat);
+                site.position.set(x,0.05,z); scene.add(site);
+            });
         }
 
-        buildMap();
+        function buildNavigationGrid() {
+            const half = MAP_SIZE / 2, size = Math.ceil(MAP_SIZE / NAV_CELL_SIZE);
+            const cells = new Array(size * size);
+            for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) {
+                const wx = -half + (x + 0.5) * NAV_CELL_SIZE, wz = -half + (z + 0.5) * NAV_CELL_SIZE;
+                cells[z * size + x] = { x, z, wx, wz, blocked: checkCollisions(wx, wz, 0.72) };
+            }
+            navigationGrid = { half, size, cells };
+            return cells.filter(cell => !cell.blocked).length;
+        }
+
+        function navCellFromWorld(position) {
+            if (!navigationGrid) return null;
+            const x = Math.floor((position.x + navigationGrid.half) / NAV_CELL_SIZE);
+            const z = Math.floor((position.z + navigationGrid.half) / NAV_CELL_SIZE);
+            if (x < 0 || z < 0 || x >= navigationGrid.size || z >= navigationGrid.size) return null;
+            return navigationGrid.cells[z * navigationGrid.size + x];
+        }
+
+        function nearestWalkableCell(position, maxRadius = 8) {
+            const origin = navCellFromWorld(position);
+            if (!origin) return null;
+            for (let radius = 0; radius <= maxRadius; radius++) {
+                const choices = [];
+                for (let dz=-radius; dz<=radius; dz++) for (let dx=-radius; dx<=radius; dx++) {
+                    if (Math.max(Math.abs(dx),Math.abs(dz)) !== radius) continue;
+                    const x=origin.x+dx,z=origin.z+dz;
+                    if (x>=0&&z>=0&&x<navigationGrid.size&&z<navigationGrid.size) {
+                        const cell=navigationGrid.cells[z*navigationGrid.size+x]; if (!cell.blocked) choices.push(cell);
+                    }
+                }
+                if (choices.length) return choices.sort((a,b) => Math.hypot(a.wx-position.x,a.wz-position.z)-Math.hypot(b.wx-position.x,b.wz-position.z))[0];
+            }
+            return null;
+        }
+
+        function navNeighbors(cell, congestion = null) {
+            const result=[];
+            for (let dz=-1;dz<=1;dz++) for(let dx=-1;dx<=1;dx++) {
+                if (!dx&&!dz) continue;
+                const x=cell.x+dx,z=cell.z+dz;
+                if(x<0||z<0||x>=navigationGrid.size||z>=navigationGrid.size) continue;
+                const next=navigationGrid.cells[z*navigationGrid.size+x];
+                if(next.blocked || (dx&&dz && (navigationGrid.cells[cell.z*navigationGrid.size+x].blocked || navigationGrid.cells[z*navigationGrid.size+cell.x].blocked))) continue;
+                result.push({cell:next,cost:(dx&&dz?1.414:1)+(congestion?.has(next)?3:0)});
+            }
+            return result;
+        }
+
+        function findDynamicPath(start, goal, bot = null) {
+            const source=nearestWalkableCell(start), target=nearestWalkableCell(goal);
+            if(!source||!target) return [];
+            const congestion=new Set();
+            bots.forEach(other=>{ if(other!==bot&&other.isAlive){const c=navCellFromWorld(other.mesh.position);if(c)congestion.add(c);} });
+            const key=c=>c.z*navigationGrid.size+c.x, open=[source], came=new Map(), g=new Map([[key(source),0]]), closed=new Set();
+            while(open.length) {
+                open.sort((a,b)=>(g.get(key(a))+Math.hypot(a.x-target.x,a.z-target.z))-(g.get(key(b))+Math.hypot(b.x-target.x,b.z-target.z)));
+                const current=open.shift(), ck=key(current); if(ck===key(target)){const path=[];let cursor=current;while(key(cursor)!==key(source)){path.unshift(new THREE.Vector3(cursor.wx,0,cursor.wz));cursor=came.get(key(cursor));}return path;}
+                if(closed.has(ck))continue;closed.add(ck);
+                navNeighbors(current,congestion).forEach(({cell,cost})=>{const nk=key(cell),ng=g.get(ck)+cost;if(!g.has(nk)||ng<g.get(nk)){g.set(nk,ng);came.set(nk,current);if(!closed.has(nk))open.push(cell);}});
+            }
+            return [];
+        }
+
+        function randomWalkablePosition(awayFrom = null) {
+            if (!navigationGrid) return new THREE.Vector3();
+            const free=navigationGrid.cells.filter(c=>!c.blocked && (!awayFrom || Math.hypot(c.wx-awayFrom.x,c.wz-awayFrom.z)>10));
+            const cell=free[Math.floor(Math.random()*free.length)]; return new THREE.Vector3(cell.wx,0,cell.wz);
+        }
 
         const player = {
             height: 1.8,
@@ -1156,23 +1275,13 @@
                 addBlockWeaponPart(group, {x:0.24,y:0.08,z:0.12}, {x:0,y:0.22,z:-0.42}, darkMetalMat);
                 glockMagazineMesh = addBlockWeaponPart(group, {x:0.12,y:0.26,z:0.18}, {x:0,y:-0.22,z:0.05}, trimMat);
                 addBlockWeaponPart(group, {x:0.16,y:0.22,z:0.44}, {x:0,y:-0.03,z:0.56}, bodyMat);
-            } else if (weaponName === 'SMG') {
-                addBlockWeaponPart(group, {x:0.18,y:0.18,z:0.62}, {x:0,y:0,z:-0.08}, bodyMat);
-                addBlockWeaponPart(group, {x:0.11,y:0.10,z:0.46}, {x:0,y:0.04,z:-0.56}, accentMat);
-                addBlockWeaponPart(group, {x:0.14,y:0.28,z:0.16}, {x:0,y:-0.25,z:0.02}, trimMat);
-                addBlockWeaponPart(group, {x:0.16,y:0.14,z:0.28}, {x:0,y:-0.02,z:0.36}, bodyMat);
             } else if (weaponName === 'Shotgun') {
                 addBlockWeaponPart(group, {x:0.18,y:0.18,z:0.92}, {x:0,y:0,z:-0.18}, bodyMat);
                 addBlockWeaponPart(group, {x:0.11,y:0.11,z:0.86}, {x:0,y:0.12,z:-0.34}, darkMetalMat);
                 addBlockWeaponPart(group, {x:0.15,y:0.16,z:0.42}, {x:0,y:-0.04,z:0.52}, trimMat);
                 addBlockWeaponPart(group, {x:0.16,y:0.24,z:0.18}, {x:0,y:-0.22,z:0.06}, bodyMat, {x:-0.18});
-            } else if (weaponName === 'Knife') {
-                addBlockWeaponPart(group, {x:0.10,y:0.10,z:0.34}, {x:0,y:-0.05,z:0.20}, trimMat);
-                addBlockWeaponPart(group, {x:0.07,y:0.04,z:0.58}, {x:0,y:0.02,z:-0.26}, accentMat);
-            } else if (weaponName === 'Grenade') {
-                addBlockWeaponPart(group, {x:0.24,y:0.28,z:0.24}, {x:0,y:0,z:0}, bodyMat);
-                addBlockWeaponPart(group, {x:0.18,y:0.04,z:0.18}, {x:0,y:0.18,z:0}, trimMat);
-                addBlockWeaponPart(group, {x:0.08,y:0.04,z:0.18}, {x:0.12,y:0.20,z:0}, accentMat);
+
+
             }
 
             group.scale.set(scale, scale, scale);
@@ -1185,8 +1294,16 @@
             }
             glockMagazineMesh = null;
             slideMesh = null;
-            const model = buildLowPolyWeaponModel(weaponName, 1.75, false);
-            model.position.set(0.2, -0.22, -0.48);
+            const viewProfiles = {
+                Glock:  { scale: 0.5, position: [0.22,-0.25,-0.58], rotation: [0.02,-0.05,0] },
+                AK47:   { scale: 0.5, position: [0.25,-0.28,-0.66], rotation: [0.01,-0.04,0] },
+                AWP:    { scale: 0.5, position: [0.22,-0.27,-0.72], rotation: [0,-0.03,0] },
+                Shotgun:{ scale: 0.5, position: [0.24,-0.29,-0.68], rotation: [0,-0.04,0] }
+            };
+            const profile = viewProfiles[weaponName] || viewProfiles.Glock;
+            const model = buildLowPolyWeaponModel(weaponName, profile.scale, false);
+            model.position.set(...profile.position);
+            model.rotation.set(...profile.rotation);
             weaponGroup.add(model);
             const sleeve = new THREE.MeshStandardMaterial({ color: player.team === 'T' ? 0x654321 : 0x244f73, roughness: 0.9 });
             addBlockWeaponPart(weaponGroup, {x:0.22,y:0.22,z:0.7}, {x:-0.32,y:-0.35,z:-0.05}, sleeve, {x:-0.28,y:0,z:-0.08});
@@ -1212,6 +1329,10 @@
 
         camera.add(weaponGroup);
         scene.add(camera);
+        let savedFov = 75;
+        try { savedFov = localStorage.getItem('cs16plh-fov') || 75; } catch (error) { console.warn('FOV salvo indisponível.', error); }
+        setFov(savedFov);
+        document.getElementById('fov-setting').value = camera.fov;
 
         const keys = {};
         let pitch = 0, yaw = 0, lookSensitivity = 1;
@@ -1229,34 +1350,56 @@
         });
         window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-        function startGame() {
-            requestMobileFullscreen();
+        const prepOverlay = document.getElementById('preparation-overlay');
+        const prepTitle = document.getElementById('prep-title');
+        const prepMessage = document.getElementById('prep-message');
+        const loadingProgress = document.getElementById('loading-progress');
+        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+        let preparationToken = 0;
 
-            document.getElementById('menu-overlay').style.display = 'none';
-
-            if (selectedMode === 'TDM') {
-                player.weapon = WEAPONS['Glock'];
-                player.team = selectedTeam;
-                player.colorHex = selectedTeam === 'CT' ? 0x2980b9 : 0xc0392b;
-            } else {
-                player.weapon = WEAPONS[selectedWeaponKey];
-                player.team = 'DM';
-                player.colorHex = playerDmColor.hex;
-            }
-
-            player.ammo = player.weapon.maxAmmo;
-            player.maxAmmo = player.weapon.maxAmmo;
-
-            build3DWeapon(player.weapon.name === 'AK-47' ? 'AK47' : (player.weapon.name === 'Escopeta' ? 'Shotgun' : player.weapon.name));
-            document.getElementById('weapon-label').innerText = player.weapon.name.toUpperCase();
-            updateHUD();
-
-            if (!isTouchDevice) {
-                document.body.requestPointerLock();
-            }
-
-            initMatch();
+        function setGameState(next) {
+            gameState = next;
+            gameFrozen = next !== GAME_STATES.PLAYING && next !== GAME_STATES.SPECTATOR;
+            const combatVisible = next === GAME_STATES.PLAYING || next === GAME_STATES.SPECTATOR;
+            document.getElementById('hud').style.display = combatVisible ? 'flex' : 'none';
+            document.getElementById('mobile-controls').style.display = combatVisible && isTouchDevice ? 'block' : 'none';
+            weaponGroup.visible = next === GAME_STATES.PLAYING && player.isAlive;
         }
+
+        async function startGame() {
+            const token = ++preparationToken;
+            selectedMap = document.getElementById('cfg-map').value;
+            document.getElementById('menu-overlay').style.display = 'none';
+            prepOverlay.style.display = 'flex'; loadingProgress.style.display = 'block'; loadingProgress.value = 0;
+            document.getElementById('prep-team-actions').style.display = 'none';
+            setGameState(GAME_STATES.LOADING);
+            const started=performance.now();
+            const steps=[
+                ['Gerando Dust PLH e colisores...',()=>{if(!mapLoaded){const map=MAP_CATALOG[selectedMap];if(!map)throw new Error('Mapa inválido');map.build();mapLoaded=true;}}],
+                ['Analisando áreas navegáveis...',()=>{const free=buildNavigationGrid();if(!free)throw new Error('Mapa sem células navegáveis');}],
+                ['Carregando modelos low-poly...',()=>build3DWeapon(selectedWeaponKey)],
+                ['Inicializando jogadores e bots...',()=>initMatch(true)],
+                ['Preparando HUD e configurações...',()=>{updateHUD();updateRoundInfo();}],
+                ['Validando sistemas...',()=>{if(!navigationGrid||!mapLoaded)throw new Error('Inicialização incompleta');}]
+            ];
+            try { for(let i=0;i<steps.length;i++){prepMessage.textContent=steps[i][0];await Promise.resolve(steps[i][1]());loadingProgress.value=i+1;await delay(40);} }
+            catch(error){console.error(error);prepTitle.textContent='Falha ao carregar';prepMessage.textContent=error.message;document.getElementById('prep-menu-button').style.display='inline-block';return;}
+            await delay(Math.max(0,700-(performance.now()-started)));
+            if (token !== preparationToken) return;
+            setGameState(GAME_STATES.CINEMATIC); prepTitle.textContent='Dust PLH'; prepMessage.textContent='Mapa pronto. Observando áreas táticas...'; loadingProgress.style.display='none';
+            cinematicState.startedAt=performance.now(); await delay(1200);
+            if(token !== preparationToken) return;
+            if(selectedMode==='DM') beginWaiting(); else showTeamSelection();
+        }
+
+        function showTeamSelection(){setGameState(GAME_STATES.TEAM);prepTitle.textContent='Escolha sua equipe';prepMessage.textContent='A câmera continuará observando o mapa.';document.getElementById('prep-team-actions').style.display='flex';}
+        function confirmTeam(team){setTeam(team);player.team=team;player.colorHex=team==='CT'?0x2980b9:0xc0392b;document.getElementById('prep-team-actions').style.display='none';beginWaiting();}
+        async function beginWaiting(){const token=preparationToken;setGameState(GAME_STATES.WAITING);prepTitle.textContent='Aguardando outros jogadores...';prepMessage.textContent='Distribuindo bots e preparando a rodada.';spawnMatchParticipants();await delay(650);if(token===preparationToken)beginCountdown();}
+        async function beginCountdown(){const token=preparationToken;setGameState(GAME_STATES.COUNTDOWN);for(let n=3;n>0;n--){prepTitle.textContent=`Partida começando em ${n}...`;prepMessage.textContent='Prepare-se!';await delay(700);if(token!==preparationToken)return;}prepOverlay.style.display='none';startRoundClock();setGameState(GAME_STATES.PLAYING);requestMobileFullscreen();if(!isTouchDevice)document.body.requestPointerLock();}
+        function returnToMenu(){preparationToken++;prepOverlay.style.display='none';document.getElementById('prep-menu-button').style.display='none';document.getElementById('menu-overlay').style.display='flex';setGameState(GAME_STATES.MENU);closeSubpanel();}
+
+        const cinematicState={startedAt:0, points:[new THREE.Vector3(-48,18,48),new THREE.Vector3(0,22,18),new THREE.Vector3(45,17,-45),new THREE.Vector3(-30,15,-20)]};
+        function updateCinematicCamera(now){const duration=4500,t=((now-cinematicState.startedAt)%duration)/duration,index=Math.floor(t*cinematicState.points.length),local=(t*cinematicState.points.length)%1;const a=cinematicState.points[index],b=cinematicState.points[(index+1)%cinematicState.points.length];camera.position.lerpVectors(a,b,local*local*(3-2*local));camera.lookAt(0,0,0);}
 
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === document.body && !gameFrozen) {
@@ -1590,6 +1733,7 @@
         }
 
         function addKillFeed(killer, victim) {
+            matchState.kills.set(killer, (matchState.kills.get(killer) || 0) + 1);
             const feed = document.getElementById('kill-feed');
             const msg = document.createElement('div');
             msg.className = 'kill-msg';
@@ -1632,125 +1776,50 @@
         }
 
         function updateRoundInfo() {
-            const el = document.getElementById('round-info');
-            if (!el) return;
-            const remaining = Math.max(0, Math.ceil((matchState.roundEndsAt - Date.now()) / 1000));
-            const mins = String(Math.floor(remaining / 60)).padStart(2, '0');
-            const secs = String(remaining % 60).padStart(2, '0');
-            el.innerText = selectedMode === 'TDM' ? `RODADA ${matchState.currentRound}/${matchSettings.rounds} • ${mins}:${secs} • LIMITE ${matchSettings.killLimit}` : 'DEATHMATCH LIVRE';
+            const el=document.getElementById('round-info');if(!el)return;
+            const end=selectedMode==='DM'?matchState.matchEndsAt:matchState.roundEndsAt,remaining=Math.max(0,Math.ceil((end-Date.now())/1000));
+            const time=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
+            if(selectedMode==='DM')el.innerText=`DM • ${time}`;
+            else el.innerText=`${selectedMode} • RODADA ${matchState.currentRound}/${matchSettings.rounds} • ${matchState.roundWins.CT}-${matchState.roundWins.T} • ${time}`;
         }
 
-        function initMatch() {
-            scoreCT = 0; scoreT = 0;
-            matchState.currentRound = 1;
-            startRound(true);
+        function initMatch(deferSpawn = false) {
+            scoreCT=0;scoreT=0;matchState.currentRound=1;matchState.roundWins.CT=0;matchState.roundWins.T=0;matchState.kills.clear();
+            bots.forEach(b=>scene.remove(b.mesh));bots.length=0;
+            if(!deferSpawn)spawnMatchParticipants();
         }
 
-        function startRound(rebuildBots = false) {
-            bots.forEach(b => scene.remove(b.mesh));
-            bots.length = 0;
-            spectatorState.active = false;
-            document.getElementById('spectator-overlay').style.display = 'none';
-            camera.add(weaponGroup);
-            weaponGroup.visible = true;
+        function safeSpawn(team='DM') {
+            const desired=team==='CT'?new THREE.Vector3(50,0,-18):team==='T'?new THREE.Vector3(-50,0,18):randomWalkablePosition();
+            const cell=nearestWalkableCell(desired);return cell?new THREE.Vector3(cell.wx,player.height,cell.wz):new THREE.Vector3(0,player.height,0);
+        }
 
-            const spawnBound = MAP_SIZE / 2 - 10;
-            const ctSpawns = [
-                { x: spawnBound - 5, z: -12 }, { x: spawnBound - 5, z: 12 }, { x: spawnBound, z: -24 }, { x: spawnBound, z: 0 }, { x: spawnBound, z: 24 },
-                { x: spawnBound - 16, z: -4 }, { x: spawnBound - 16, z: 16 }, { x: spawnBound - 22, z: -20 }
-            ];
-            const tSpawns = [
-                { x: -spawnBound + 5, z: -12 }, { x: -spawnBound + 5, z: 12 }, { x: -spawnBound, z: -24 }, { x: -spawnBound, z: 0 }, { x: -spawnBound, z: 24 },
-                { x: -spawnBound + 16, z: -4 }, { x: -spawnBound + 16, z: 16 }, { x: -spawnBound + 22, z: -20 }
-            ];
-
-            if (selectedMode === 'TDM') {
-                gameFrozen = true;
-                const playerSpawns = player.team === 'CT' ? ctSpawns : tSpawns;
-                const pPos = playerSpawns.pop();
-                camera.position.set(pPos.x, player.height, pPos.z);
-                yaw = player.team === 'CT' ? -Math.PI / 2 : Math.PI / 2;
-
-                const totalBots = Math.max(2, matchSettings.botCount);
-                const ctCount = player.team === 'CT' ? Math.floor(totalBots / 2) : Math.ceil(totalBots / 2);
-                const tCount = totalBots - ctCount;
-                for (let i = 0; i < ctCount; i++) {
-                    const pos = ctSpawns[i % ctSpawns.length];
-                    createBot('CT', `Bot CT-${i+1}`, 0x2980b9, pos.x, pos.z, WEAPONS['Glock']);
-                }
-                for (let i = 0; i < tCount; i++) {
-                    const pos = tSpawns[i % tSpawns.length];
-                    createBot('T', `Bot TR-${i+1}`, 0xc0392b, pos.x, pos.z, WEAPONS['Glock']);
-                }
-                matchState.roundStartedAt = Date.now();
-                matchState.roundEndsAt = matchState.roundStartedAt + matchSettings.roundTime * 1000;
-                matchState.inRound = true;
-                start5sCountdown();
-            } else {
-                gameFrozen = false;
-                const rx = (Math.random() - 0.5) * (MAP_SIZE - 20);
-                const rz = (Math.random() - 0.5) * (MAP_SIZE - 20);
-                camera.position.set(rx, player.height, rz);
-                const availableColors = DM_COLORS.filter(c => c.hex !== player.colorHex);
-                const weaponKeys = Object.keys(WEAPONS);
-                for (let i = 0; i < matchSettings.botCount; i++) {
-                    const botColor = availableColors[i % availableColors.length];
-                    const randomWeaponKey = weaponKeys[Math.floor(Math.random() * weaponKeys.length)];
-                    createBot('DM', `Bot ${botColor.name}`, botColor.hex, (Math.random() - 0.5) * (MAP_SIZE - 20), (Math.random() - 0.5) * (MAP_SIZE - 20), WEAPONS[randomWeaponKey]);
-                }
+        function spawnMatchParticipants() {
+            bots.forEach(b=>scene.remove(b.mesh));bots.length=0;spectatorState.active=false;document.getElementById('spectator-overlay').style.display='none';
+            if(selectedMode==='DM'){player.team='DM';player.colorHex=playerDmColor.hex;player.weapon=WEAPONS[selectedWeaponKey];}
+            else player.weapon=WEAPONS.Glock;
+            player.hp=100;player.isAlive=true;player.ammo=player.weapon.maxAmmo;player.maxAmmo=player.weapon.maxAmmo;camera.position.copy(safeSpawn(player.team));
+            const weaponKeys=Object.keys(WEAPONS);
+            const teamPlan=[];
+            if(selectedMode==='DM') for(let i=0;i<matchSettings.botCount;i++)teamPlan.push('DM');
+            else {
+                const targetPerTeam=Math.ceil((matchSettings.botCount+1)/2);
+                const ctBots=targetPerTeam-(player.team==='CT'?1:0),tBots=targetPerTeam-(player.team==='T'?1:0);
+                teamPlan.push(...Array(ctBots).fill('CT'),...Array(tBots).fill('T'));
             }
-            player.hp = 100;
-            player.isAlive = true;
-            updateHUD();
-            updateRoundInfo();
+            teamPlan.forEach((team,i)=>{const position=safeSpawn(team),key=weaponKeys[i%weaponKeys.length];createBot(team,team==='DM'?`Bot ${i+1}`:`Bot ${team}-${teamPlan.slice(0,i+1).filter(t=>t===team).length}`,team==='CT'?0x2980b9:team==='T'?0xc0392b:DM_COLORS[(i+1)%DM_COLORS.length].hex,position.x,position.z,WEAPONS[key]);});
+            build3DWeapon(player.weapon.name==='AK-47'?'AK47':player.weapon.name==='Escopeta'?'Shotgun':player.weapon.name);updateHUD();
         }
 
-        function createBot(team, name, colorHex, x, z, weapon) {
-            const mesh = createBotMesh(colorHex, weapon.name);
-            mesh.position.set(x, 0, z);
-            scene.add(mesh);
-            bots.push({
-                mesh, team, name, hp: 100, isAlive: true, radius: 0.58, speed: 5.8 + Math.random() * 2.0,
-                targetPos: new THREE.Vector3(x, 0, z), waypoint: null, lastShoot: 0,
-                shootDelay: weapon.fireRate + 260 + Math.random() * 280, stuckTime: 0,
-                lastPos: new THREE.Vector3(x, 0, z), weapon, ammo: weapon.ammo, maxAmmo: weapon.ammo,
-                strafeDir: Math.random() < 0.5 ? 1 : -1, lastStrafeChange: 0, state: 'patrol',
-                lastKnownEnemyPos: null, heardPos: null, investigateUntil: 0, coverPos: null,
-                routeChangeAt: 0, avoidDir: new THREE.Vector3(), pathMemory: [], flankSide: Math.random() < 0.5 ? 1 : -1
-            });
-        }
+        function startRoundClock(){const now=Date.now();matchState.roundStartedAt=now;matchState.inRound=true;matchState.roundEndsAt=now+matchSettings.roundTime*1000;if(selectedMode==='DM')matchState.matchEndsAt=now+matchSettings.dmDuration*1000;updateRoundInfo();}
+
+        function startRound(){spawnMatchParticipants();beginCountdown();}
 
         function respawnBot(bot) {
-            if (selectedMode === 'TDM') {
-                bot.isAlive = false;
-                bot.mesh.visible = false;
-                return;
-            }
-            bot.hp = 100; bot.ammo = bot.maxAmmo; bot.isAlive = true; bot.mesh.visible = true;
-            const limit = MAP_SIZE / 2 - 15;
-            const rx = (Math.random() - 0.5) * limit * 2;
-            const rz = (Math.random() - 0.5) * limit * 2;
-            bot.mesh.position.set(rx, 0, rz);
-            bot.targetPos.set(rx, 0, rz);
-            bot.lastPos.copy(bot.mesh.position);
+            if(selectedMode!=='DM'){bot.isAlive=false;bot.mesh.visible=false;return;}
+            bot.hp=100;bot.ammo=bot.maxAmmo;bot.isAlive=true;bot.mesh.visible=true;const pos=safeSpawn('DM');bot.mesh.position.set(pos.x,0,pos.z);bot.targetPos.copy(bot.mesh.position);bot.lastPos.copy(bot.mesh.position);bot.navRoute=[];
         }
 
-        function start5sCountdown() {
-            const banner = document.getElementById('countdown-banner');
-            banner.style.display = 'block';
-            let timer = 5;
-            banner.innerText = `PREPARE-SE: ${timer}`;
-            const interval = setInterval(() => {
-                timer--;
-                if (timer > 0) banner.innerText = `PREPARE-SE: ${timer}`;
-                else {
-                    banner.innerText = "VALENDO!";
-                    gameFrozen = false;
-                    setTimeout(() => { banner.style.display = 'none'; }, 1000);
-                    clearInterval(interval);
-                }
-            }, 1000);
-        }
 
         function checkCollisions(x, z, radius) {
             const box = new THREE.Box3();
@@ -1811,15 +1880,7 @@
             return best ? best.clone() : null;
         }
 
-        function getPatrolPoint(bot) {
-            const limit = MAP_SIZE / 2 - 9;
-            const candidates = [
-                new THREE.Vector3((Math.random() - 0.5) * limit * 2, 0, (Math.random() - 0.5) * limit * 2),
-                new THREE.Vector3(bot.team === 'CT' ? 42 : -42, 0, (Math.random() - 0.5) * 90),
-                new THREE.Vector3((Math.random() - 0.5) * 90, 0, bot.team === 'CT' ? -42 : 42)
-            ];
-            return candidates.find(p => !checkCollisions(p.x, p.z, bot.radius)) || new THREE.Vector3(0,0,0);
-        }
+        function getPatrolPoint(bot) { return randomWalkablePosition(bot.mesh.position); }
 
         function steerBot(bot, desired, delta, speedScale = 1) {
             const old = bot.mesh.position.clone();
@@ -1884,7 +1945,7 @@
         }
 
         function updateAI(bot, delta, now) {
-            if (gameFrozen || !bot.isAlive) return;
+            if (![GAME_STATES.PLAYING, GAME_STATES.SPECTATOR].includes(gameState) || !bot.isAlive) return;
             const enemy = findEnemy(bot);
             for (let i = aiSoundEvents.length - 1; i >= 0; i--) {
                 const snd = aiSoundEvents[i];
@@ -1919,14 +1980,26 @@
                 destination = bot.targetPos; bot.state = 'patrol-map'; speedScale = 0.72;
             }
 
+            /* Recalcula A* somente quando o objetivo muda; percorre waypoints visíveis em sequência. */
+            if ((!bot.navGoal || bot.navGoal.distanceToSquared(destination) > 36 || !bot.navRoute.length) && now >= bot.navRepathAt) {
+                bot.navGoal = destination.clone();
+                bot.navRoute = findDynamicPath(bot.mesh.position, destination, bot);
+                bot.navRepathAt = now + (bot.navRoute.length ? 650 : 1200) + Math.random() * 180;
+                if (!bot.navRoute.length && enemy) { destination = randomWalkablePosition(bot.mesh.position); bot.state = 'search-alternative'; }
+            }
+            while (bot.navRoute.length && bot.mesh.position.distanceTo(bot.navRoute[0]) < 2.2) bot.navRoute.shift();
             if (bot.waypoint && bot.mesh.position.distanceTo(bot.waypoint) > 2) destination = bot.waypoint;
-            else bot.waypoint = null;
+            else { bot.waypoint = null; if (bot.navRoute.length) destination = bot.navRoute[0]; }
             steerBot(bot, destination, delta, speedScale);
 
             if (bot.mesh.position.distanceTo(bot.lastPos) < 0.02) {
                 bot.stuckTime += delta;
                 if (bot.stuckTime > 0.45) {
-                    bot.waypoint = getPatrolPoint(bot);
+                    bot.recoveryAttempts++;
+                    bot.navRoute = []; bot.navRepathAt = 0;
+                    const escapeAngle = (bot.recoveryAttempts % 4) * Math.PI / 2 + Math.random() * 0.35;
+                    bot.waypoint = bot.mesh.position.clone().add(new THREE.Vector3(Math.cos(escapeAngle) * 7, 0, Math.sin(escapeAngle) * 7));
+                    if (checkCollisions(bot.waypoint.x, bot.waypoint.z, bot.radius)) bot.waypoint = getPatrolPoint(bot);
                     bot.coverPos = null;
                     bot.flankSide *= -1;
                     bot.routeChangeAt = 0;
@@ -1936,13 +2009,14 @@
                     if (!checkCollisions(ex, ez, bot.radius)) bot.mesh.position.set(ex, 0, ez);
                     bot.stuckTime = 0;
                 }
-            } else bot.stuckTime = 0;
+            } else { bot.stuckTime = 0; bot.recoveryAttempts = 0; }
             bot.lastPos.copy(bot.mesh.position);
         }
 
         function playerDied() {
             player.isAlive = false;
             spectatorState.active = true;
+            setGameState(GAME_STATES.SPECTATOR);
             spectatorState.targetIndex = 0;
             weaponGroup.visible = false;
             document.getElementById('spectator-overlay').style.display = 'block';
@@ -1973,22 +2047,17 @@
             document.getElementById('spectator-name').innerText = `Observando: ${target.name}`;
         }
 
+        function finishMatch(message) {setGameState(GAME_STATES.MATCH_END);prepOverlay.style.display='flex';prepTitle.textContent='Fim da partida';prepMessage.textContent=message;document.getElementById('prep-menu-button').style.display='inline-block';document.getElementById('prep-team-actions').style.display='none';}
         function checkRoundRules() {
-            if (selectedMode !== 'TDM' || gameFrozen || !matchState.inRound) return;
-            updateRoundInfo();
-            const tAlive = bots.some(b => b.team === 'T' && b.isAlive) || (player.team === 'T' && player.isAlive);
-            const ctAlive = bots.some(b => b.team === 'CT' && b.isAlive) || (player.team === 'CT' && player.isAlive);
-            if (Date.now() >= matchState.roundEndsAt || scoreT >= matchSettings.killLimit || scoreCT >= matchSettings.killLimit || !tAlive || !ctAlive) {
-                matchState.inRound = false;
-                gameFrozen = true;
-                const banner = document.getElementById('countdown-banner');
-                banner.style.display = 'block';
-                banner.innerText = matchState.currentRound >= matchSettings.rounds ? 'PARTIDA ENCERRADA' : 'NOVA RODADA';
-                setTimeout(() => {
-                    if (matchState.currentRound >= matchSettings.rounds) pauseGameAndMenu();
-                    else { matchState.currentRound++; startRound(false); }
-                }, 2200);
-            }
+            if(![GAME_STATES.PLAYING,GAME_STATES.SPECTATOR].includes(gameState)||!matchState.inRound)return;updateRoundInfo();
+            if(selectedMode==='DM'){if(Date.now()>=matchState.matchEndsAt){const ranking=[['Jogador',matchState.kills.get('Jogador')||0],...bots.map(b=>[b.name,matchState.kills.get(b.name)||0])].sort((a,b)=>b[1]-a[1]);finishMatch(`Vencedor: ${ranking[0][0]} • ${ranking[0][1]} eliminações`);}return;}
+            const tAlive=bots.some(b=>b.team==='T'&&b.isAlive)||(player.team==='T'&&player.isAlive),ctAlive=bots.some(b=>b.team==='CT'&&b.isAlive)||(player.team==='CT'&&player.isAlive);
+            if(Date.now()<matchState.roundEndsAt&&tAlive&&ctAlive)return;
+            matchState.inRound=false;setGameState(GAME_STATES.ROUND_END);
+            const winner=!ctAlive?'T':!tAlive?'CT':scoreCT>=scoreT?'CT':'T';matchState.roundWins[winner]++;document.getElementById('score-ct').innerText=matchState.roundWins.CT;document.getElementById('score-t').innerText=matchState.roundWins.T;scoreCT=0;scoreT=0;matchState.currentRound++;
+            const needed=Math.floor(matchSettings.rounds/2)+1;
+            if(matchState.roundWins[winner]>=needed||matchState.currentRound>matchSettings.rounds){finishMatch(`${winner} venceu • ${matchState.roundWins.CT} x ${matchState.roundWins.T}`);}
+            else{prepOverlay.style.display='flex';prepTitle.textContent=`${winner} venceu a rodada`;prepMessage.textContent='Preparando próxima rodada...';setTimeout(()=>startRound(),1400);}
         }
 
         function checkPlayerCollisions(targetPos) {
@@ -2026,9 +2095,8 @@
             requestAnimationFrame(animate);
             const delta = Math.min(clock.getDelta(), 0.1);
 
-            camera.rotation.order = "YXZ";
-            camera.rotation.y = yaw;
-            camera.rotation.x = pitch;
+            if ([GAME_STATES.LOADING,GAME_STATES.CINEMATIC,GAME_STATES.TEAM,GAME_STATES.WAITING,GAME_STATES.COUNTDOWN].includes(gameState) && mapLoaded) updateCinematicCamera(performance.now());
+            else { camera.rotation.order = "YXZ"; camera.rotation.y = yaw; camera.rotation.x = pitch; }
 
             if (spectatorState.active && !gameFrozen) {
                 updateSpectatorCamera(delta);
@@ -2091,6 +2159,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        setGameState(GAME_STATES.MENU);
         animate();
     </script>
 </body>
