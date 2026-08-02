@@ -656,6 +656,8 @@
                     </section>
                     <section class="option-tab-page" data-option-page="graphics">
                         <div class="menu-section"><h3>🖥️ GRÁFICOS</h3>
+                            <div class="setting-label">CAMPO DE VISÃO (FOV): <output id="fov-value">75°</output></div>
+                            <input id="fov-setting" class="range-setting" type="range" min="60" max="110" value="75" step="1" oninput="setFov(this.value)" aria-label="Campo de visão">
                             <div class="setting-label">QUALIDADE DE SOMBRAS</div>
                             <div class="btn-group"><button class="opt-btn" onclick="setShadowQuality(false, this)">Desligadas</button><button class="opt-btn active" onclick="setShadowQuality(true, this)">Ativadas</button></div>
                             <div class="setting-label">DISTÂNCIA DA NEBLINA</div><input class="range-setting" type="range" min="0.004" max="0.025" value="0.012" step="0.001" oninput="setFogDensity(this.value)">
@@ -841,6 +843,14 @@
             scene.fog.density = Number(value);
         }
 
+        function setFov(value) {
+            const fov = THREE.MathUtils.clamp(Number(value), 60, 110);
+            camera.fov = fov;
+            camera.updateProjectionMatrix();
+            document.getElementById('fov-value').textContent = `${fov}°`;
+            localStorage.setItem('cs16plh-fov', String(fov));
+        }
+
         function exitGame() {
             if (confirm("Deseja realmente fechar o jogo?")) {
                 window.close();
@@ -1014,6 +1024,14 @@
         const boxMat = new THREE.MeshStandardMaterial({ color: 0xb08850, roughness: 0.7 });
 
         const MAP_SIZE = 130;
+        /* Rotas principais do mapa: long A, meio, catwalk e túneis B. */
+        const NAV_NODES = [
+            [-52,0,42],[-38,0,42],[-24,0,42],[-8,0,42],[10,0,42],[28,0,42],[46,0,42],
+            [-48,0,18],[-28,0,18],[-8,0,18],[10,0,18],[28,0,18],[48,0,18],
+            [-48,0,-5],[-28,0,-5],[-8,0,-5],[10,0,-5],[28,0,-5],[48,0,-5],
+            [-48,0,-28],[-28,0,-28],[-8,0,-28],[10,0,-28],[28,0,-28],[48,0,-28],
+            [-46,0,-48],[-26,0,-48],[-6,0,-48],[14,0,-48],[34,0,-48],[50,0,-48]
+        ].map(([x,y,z], id) => ({ id, position: new THREE.Vector3(x,y,z), links: [] }));
 
         function buildMap() {
             const ground = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), groundMat);
@@ -1088,9 +1106,60 @@
                 coverPoints.push(new THREE.Vector3(pos[0], 0, pos[2] + 3));
                 coverPoints.push(new THREE.Vector3(pos[0], 0, pos[2] - 3));
             });
+
+            /* Silhueta própria inspirada em Dust II: portões duplos, rampas e bombsites. */
+            const sandMat = new THREE.MeshStandardMaterial({ color: 0xc8a66a, roughness: 0.95 });
+            createWall(18, 5, 1.2, -46, 2.5, 30, sandMat); // long A
+            createWall(1.2, 5, 16, -18, 2.5, 34, sandMat); // catwalk
+            createWall(14, 4, 1.2, 42, 2, -34, sandMat);   // B platform
+            createWall(1.2, 5, 12, 8, 2.5, -48, sandMat);  // tunnel exit
+            const doorMat = new THREE.MeshStandardMaterial({ color: 0x6f4325, roughness: 0.9 });
+            createWall(0.8, 4.4, 6, -1.6, 2.2, 0, doorMat);
+            createWall(0.8, 4.4, 6, 1.6, 2.2, 0, doorMat); // mid doors
+            const siteMat = new THREE.MeshStandardMaterial({ color: 0xb56a3b, roughness: 1 });
+            [[-48,48],[45,-45]].forEach(([x,z]) => {
+                const site = new THREE.Mesh(new THREE.CylinderGeometry(5,5,0.08,8), siteMat);
+                site.position.set(x,0.05,z); scene.add(site);
+            });
         }
 
         buildMap();
+
+        function buildNavigationGraph() {
+            NAV_NODES.forEach(node => { node.links.length = 0; });
+            NAV_NODES.forEach((node, index) => NAV_NODES.slice(index + 1).forEach(other => {
+                const distance = node.position.distanceTo(other.position);
+                if (distance <= 25 && hasLineOfSight(node.position.clone().setY(1), other.position.clone().setY(1))) {
+                    node.links.push(other.id); other.links.push(node.id);
+                }
+            }));
+        }
+
+        function nearestNavNode(position) {
+            return NAV_NODES.filter(n => !checkCollisions(n.position.x, n.position.z, 0.65))
+                .sort((a,b) => a.position.distanceToSquared(position) - b.position.distanceToSquared(position))[0];
+        }
+
+        function findWaypointRoute(start, goal) {
+            const source = nearestNavNode(start), target = nearestNavNode(goal);
+            if (!source || !target) return [];
+            const open = [source.id], cameFrom = new Map(), cost = new Map([[source.id, 0]]);
+            while (open.length) {
+                open.sort((a,b) => (cost.get(a) + NAV_NODES[a].position.distanceTo(target.position)) - (cost.get(b) + NAV_NODES[b].position.distanceTo(target.position)));
+                const current = open.shift();
+                if (current === target.id) break;
+                NAV_NODES[current].links.forEach(next => {
+                    const nextCost = cost.get(current) + NAV_NODES[current].position.distanceTo(NAV_NODES[next].position);
+                    if (!cost.has(next) || nextCost < cost.get(next)) { cost.set(next,nextCost); cameFrom.set(next,current); if (!open.includes(next)) open.push(next); }
+                });
+            }
+            if (source.id !== target.id && !cameFrom.has(target.id)) return [];
+            const route = [target.id];
+            while (route[0] !== source.id) route.unshift(cameFrom.get(route[0]));
+            return route.slice(1).map(id => NAV_NODES[id].position.clone());
+        }
+
+        buildNavigationGraph();
 
         const player = {
             height: 1.8,
@@ -1156,23 +1225,13 @@
                 addBlockWeaponPart(group, {x:0.24,y:0.08,z:0.12}, {x:0,y:0.22,z:-0.42}, darkMetalMat);
                 glockMagazineMesh = addBlockWeaponPart(group, {x:0.12,y:0.26,z:0.18}, {x:0,y:-0.22,z:0.05}, trimMat);
                 addBlockWeaponPart(group, {x:0.16,y:0.22,z:0.44}, {x:0,y:-0.03,z:0.56}, bodyMat);
-            } else if (weaponName === 'SMG') {
-                addBlockWeaponPart(group, {x:0.18,y:0.18,z:0.62}, {x:0,y:0,z:-0.08}, bodyMat);
-                addBlockWeaponPart(group, {x:0.11,y:0.10,z:0.46}, {x:0,y:0.04,z:-0.56}, accentMat);
-                addBlockWeaponPart(group, {x:0.14,y:0.28,z:0.16}, {x:0,y:-0.25,z:0.02}, trimMat);
-                addBlockWeaponPart(group, {x:0.16,y:0.14,z:0.28}, {x:0,y:-0.02,z:0.36}, bodyMat);
             } else if (weaponName === 'Shotgun') {
                 addBlockWeaponPart(group, {x:0.18,y:0.18,z:0.92}, {x:0,y:0,z:-0.18}, bodyMat);
                 addBlockWeaponPart(group, {x:0.11,y:0.11,z:0.86}, {x:0,y:0.12,z:-0.34}, darkMetalMat);
                 addBlockWeaponPart(group, {x:0.15,y:0.16,z:0.42}, {x:0,y:-0.04,z:0.52}, trimMat);
                 addBlockWeaponPart(group, {x:0.16,y:0.24,z:0.18}, {x:0,y:-0.22,z:0.06}, bodyMat, {x:-0.18});
-            } else if (weaponName === 'Knife') {
-                addBlockWeaponPart(group, {x:0.10,y:0.10,z:0.34}, {x:0,y:-0.05,z:0.20}, trimMat);
-                addBlockWeaponPart(group, {x:0.07,y:0.04,z:0.58}, {x:0,y:0.02,z:-0.26}, accentMat);
-            } else if (weaponName === 'Grenade') {
-                addBlockWeaponPart(group, {x:0.24,y:0.28,z:0.24}, {x:0,y:0,z:0}, bodyMat);
-                addBlockWeaponPart(group, {x:0.18,y:0.04,z:0.18}, {x:0,y:0.18,z:0}, trimMat);
-                addBlockWeaponPart(group, {x:0.08,y:0.04,z:0.18}, {x:0.12,y:0.20,z:0}, accentMat);
+
+
             }
 
             group.scale.set(scale, scale, scale);
@@ -1185,8 +1244,16 @@
             }
             glockMagazineMesh = null;
             slideMesh = null;
-            const model = buildLowPolyWeaponModel(weaponName, 1.75, false);
-            model.position.set(0.2, -0.22, -0.48);
+            const viewProfiles = {
+                Glock:  { scale: 1.55, position: [0.22,-0.25,-0.58], rotation: [0.02,-0.05,0] },
+                AK47:   { scale: 1.45, position: [0.25,-0.28,-0.66], rotation: [0.01,-0.04,0] },
+                AWP:    { scale: 1.25, position: [0.22,-0.27,-0.72], rotation: [0,-0.03,0] },
+                Shotgun:{ scale: 1.35, position: [0.24,-0.29,-0.68], rotation: [0,-0.04,0] }
+            };
+            const profile = viewProfiles[weaponName] || viewProfiles.Glock;
+            const model = buildLowPolyWeaponModel(weaponName, profile.scale, false);
+            model.position.set(...profile.position);
+            model.rotation.set(...profile.rotation);
             weaponGroup.add(model);
             const sleeve = new THREE.MeshStandardMaterial({ color: player.team === 'T' ? 0x654321 : 0x244f73, roughness: 0.9 });
             addBlockWeaponPart(weaponGroup, {x:0.22,y:0.22,z:0.7}, {x:-0.32,y:-0.35,z:-0.05}, sleeve, {x:-0.28,y:0,z:-0.08});
@@ -1212,6 +1279,8 @@
 
         camera.add(weaponGroup);
         scene.add(camera);
+        setFov(localStorage.getItem('cs16plh-fov') || 75);
+        document.getElementById('fov-setting').value = camera.fov;
 
         const keys = {};
         let pitch = 0, yaw = 0, lookSensitivity = 1;
@@ -1716,7 +1785,7 @@
                 lastPos: new THREE.Vector3(x, 0, z), weapon, ammo: weapon.ammo, maxAmmo: weapon.ammo,
                 strafeDir: Math.random() < 0.5 ? 1 : -1, lastStrafeChange: 0, state: 'patrol',
                 lastKnownEnemyPos: null, heardPos: null, investigateUntil: 0, coverPos: null,
-                routeChangeAt: 0, avoidDir: new THREE.Vector3(), pathMemory: [], flankSide: Math.random() < 0.5 ? 1 : -1
+                routeChangeAt: 0, navRoute: [], navGoal: null, recoveryAttempts: 0, avoidDir: new THREE.Vector3(), pathMemory: [], flankSide: Math.random() < 0.5 ? 1 : -1
             });
         }
 
@@ -1919,14 +1988,24 @@
                 destination = bot.targetPos; bot.state = 'patrol-map'; speedScale = 0.72;
             }
 
+            /* Recalcula A* somente quando o objetivo muda; percorre waypoints visíveis em sequência. */
+            if (!bot.navGoal || bot.navGoal.distanceToSquared(destination) > 36 || !bot.navRoute.length) {
+                bot.navGoal = destination.clone();
+                bot.navRoute = findWaypointRoute(bot.mesh.position, destination);
+            }
+            while (bot.navRoute.length && bot.mesh.position.distanceTo(bot.navRoute[0]) < 2.2) bot.navRoute.shift();
             if (bot.waypoint && bot.mesh.position.distanceTo(bot.waypoint) > 2) destination = bot.waypoint;
-            else bot.waypoint = null;
+            else { bot.waypoint = null; if (bot.navRoute.length) destination = bot.navRoute[0]; }
             steerBot(bot, destination, delta, speedScale);
 
             if (bot.mesh.position.distanceTo(bot.lastPos) < 0.02) {
                 bot.stuckTime += delta;
                 if (bot.stuckTime > 0.45) {
-                    bot.waypoint = getPatrolPoint(bot);
+                    bot.recoveryAttempts++;
+                    bot.navRoute = [];
+                    const escapeAngle = (bot.recoveryAttempts % 4) * Math.PI / 2 + Math.random() * 0.35;
+                    bot.waypoint = bot.mesh.position.clone().add(new THREE.Vector3(Math.cos(escapeAngle) * 7, 0, Math.sin(escapeAngle) * 7));
+                    if (checkCollisions(bot.waypoint.x, bot.waypoint.z, bot.radius)) bot.waypoint = getPatrolPoint(bot);
                     bot.coverPos = null;
                     bot.flankSide *= -1;
                     bot.routeChangeAt = 0;
@@ -1936,7 +2015,7 @@
                     if (!checkCollisions(ex, ez, bot.radius)) bot.mesh.position.set(ex, 0, ez);
                     bot.stuckTime = 0;
                 }
-            } else bot.stuckTime = 0;
+            } else { bot.stuckTime = 0; bot.recoveryAttempts = 0; }
             bot.lastPos.copy(bot.mesh.position);
         }
 
