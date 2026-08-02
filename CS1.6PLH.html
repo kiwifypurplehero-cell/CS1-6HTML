@@ -266,21 +266,21 @@
             color: white;
             display: flex;
             flex-direction: column;
-            justify-content: center;
-            align-items: center;
+            justify-content: flex-end;
+            align-items: flex-start;
             z-index: 100;
-            text-align: center;
-            padding: 20px;
+            text-align: left;
+            padding: 28px 34px;
             overflow-y: auto;
         }
 
         .cs-title {
-            font-size: 42px;
+            font-size: 34px;
             font-weight: 900;
             color: #de9b35;
             letter-spacing: 3px;
             text-shadow: 0 0 15px rgba(222, 155, 53, 0.4), 2px 2px 4px #000;
-            margin-bottom: 25px;
+            margin-bottom: 14px;
             font-family: 'Impact', 'Segoe UI', sans-serif;
         }
 
@@ -288,9 +288,9 @@
         .cs-main-nav {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 6px;
             width: 100%;
-            max-width: 340px;
+            max-width: 270px;
         }
 
         .cs-menu-btn {
@@ -298,8 +298,8 @@
             border: 1px solid #57657a;
             border-left: 5px solid #de9b35;
             color: #e0e6ed;
-            padding: 14px 20px;
-            font-size: 18px;
+            padding: 9px 14px;
+            font-size: 14px;
             font-weight: bold;
             text-align: left;
             border-radius: 4px;
@@ -315,7 +315,7 @@
             background: linear-gradient(180deg, #4f5d73 0%, #2f3947 100%);
             border-color: #de9b35;
             color: #ffffff;
-            transform: translateX(6px);
+            transform: translateX(4px);
             box-shadow: 0 4px 15px rgba(222, 155, 53, 0.3);
         }
 
@@ -504,6 +504,22 @@
             font-size: 14px;
             border: 1px solid rgba(255,255,255,0.1);
         }
+
+        /* Janela de opções com conteúdo trocado por abas, sem recriar o painel. */
+        #panel-options { padding-bottom: 0; min-height: 430px; }
+        .options-content { flex: 1; overflow-y: auto; padding-right: 3px; }
+        .option-tab-page { display: none; }
+        .option-tab-page.active { display: block; animation: tabFade 0.16s ease-out; }
+        .options-tabs { display: flex; gap: 2px; margin: 12px -20px 0; padding: 8px 10px; background: #11161e; border-top: 1px solid #455366; }
+        .options-tab { flex: 1; border: 1px solid #455366; border-radius: 3px; padding: 7px 4px; background: #29313d; color: #cbd5e1; cursor: pointer; font-size: 11px; font-weight: bold; }
+        .options-tab.active, .options-tab:hover { color: #111; background: #de9b35; border-color: #f2b857; }
+        .range-setting { width: 100%; accent-color: #de9b35; }
+        @keyframes tabFade { from { opacity: .45; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+        @media (max-width: 650px) {
+            #menu-overlay { padding: 16px; }
+            .options-tabs { flex-wrap: wrap; }
+            .options-tab { min-width: 30%; }
+        }
     </style>
 </head>
 <body>
@@ -575,10 +591,10 @@
 
                     <h3 style="margin-top:12px;">ESCOLHER ARMA</h3>
                     <div class="btn-group" id="weapon-picker">
-                        <button class="opt-btn active" onclick="setWeapon('Glock')">Glock</button>
-                        <button class="opt-btn" onclick="setWeapon('AK47')">AK-47</button>
-                        <button class="opt-btn" onclick="setWeapon('AWP')">AWP</button>
-                        <button class="opt-btn" onclick="setWeapon('Shotgun')">Escopeta</button>
+                        <button class="opt-btn active" onclick="setWeapon('Glock', this)">Glock</button>
+                        <button class="opt-btn" onclick="setWeapon('AK47', this)">AK-47</button>
+                        <button class="opt-btn" onclick="setWeapon('AWP', this)">AWP</button>
+                        <button class="opt-btn" onclick="setWeapon('Shotgun', this)">Escopeta</button>
                     </div>
                 </div>
 
@@ -614,51 +630,54 @@
             </div>
 
             <!-- Subpanel: Opções -->
-            <div class="cs-subpanel" id="panel-options">
-                <h2><span>⚙️ CONFIGURAÇÕES E OPÇÕES</span></h2>
-
-                <div class="menu-section accessibility-box">
-                    <h3>♿ ACESSIBILIDADE E MIRA</h3>
-                    
-                    <div class="setting-label">ESTILO DA MIRA</div>
-                    <div class="btn-group" id="crosshair-picker">
-                        <button class="opt-btn active" onclick="setCrosshairStyle('cross')">Cruz (+)</button>
-                        <button class="opt-btn" onclick="setCrosshairStyle('dot')">Ponto (•)</button>
-                        <button class="opt-btn" onclick="setCrosshairStyle('circle')">Círculo (◯)</button>
-                        <button class="opt-btn" onclick="setCrosshairStyle('gap')">Aberto (+)</button>
-                        <button class="opt-btn" onclick="setCrosshairStyle('square')">Quadrado (▢)</button>
-                    </div>
-
-                    <div class="setting-label">TAMANHO DA MIRA</div>
-                    <div class="btn-group" id="crosshair-size-picker">
-                        <button class="opt-btn" onclick="setCrosshairSize(0.7)">Pequeno</button>
-                        <button class="opt-btn active" onclick="setCrosshairSize(1.0)">Normal</button>
-                        <button class="opt-btn" onclick="setCrosshairSize(1.4)">Grande</button>
-                        <button class="opt-btn" onclick="setCrosshairSize(1.8)">Extra Grande</button>
-                    </div>
-
-                    <div class="setting-label">COR DA MIRA</div>
-                    <div class="color-picker-container" id="crosshair-color-picker"></div>
+            <div class="cs-subpanel" id="panel-options" role="dialog" aria-labelledby="options-title">
+                <h2 id="options-title"><span>⚙️ OPÇÕES DO CS1.6PLH</span></h2>
+                <div class="options-content">
+                    <section class="option-tab-page active" data-option-page="accessibility">
+                        <div class="menu-section accessibility-box">
+                            <h3>♿ ACESSIBILIDADE E MIRA</h3>
+                            <div class="setting-label">ESTILO DA MIRA</div>
+                            <div class="btn-group" id="crosshair-picker">
+                                <button class="opt-btn active" onclick="setCrosshairStyle('cross', this)">Cruz (+)</button>
+                                <button class="opt-btn" onclick="setCrosshairStyle('dot', this)">Ponto (•)</button>
+                                <button class="opt-btn" onclick="setCrosshairStyle('circle', this)">Círculo (◯)</button>
+                                <button class="opt-btn" onclick="setCrosshairStyle('gap', this)">Aberto (+)</button>
+                                <button class="opt-btn" onclick="setCrosshairStyle('square', this)">Quadrado (▢)</button>
+                            </div>
+                            <div class="setting-label">TAMANHO DA MIRA</div>
+                            <div class="btn-group" id="crosshair-size-picker">
+                                <button class="opt-btn" onclick="setCrosshairSize(0.7, this)">Pequeno</button>
+                                <button class="opt-btn active" onclick="setCrosshairSize(1, this)">Normal</button>
+                                <button class="opt-btn" onclick="setCrosshairSize(1.4, this)">Grande</button>
+                            </div>
+                            <div class="setting-label">COR DA MIRA</div>
+                            <div class="color-picker-container" id="crosshair-color-picker"></div>
+                        </div>
+                    </section>
+                    <section class="option-tab-page" data-option-page="graphics">
+                        <div class="menu-section"><h3>🖥️ GRÁFICOS</h3>
+                            <div class="setting-label">QUALIDADE DE SOMBRAS</div>
+                            <div class="btn-group"><button class="opt-btn" onclick="setShadowQuality(false, this)">Desligadas</button><button class="opt-btn active" onclick="setShadowQuality(true, this)">Ativadas</button></div>
+                            <div class="setting-label">DISTÂNCIA DA NEBLINA</div><input class="range-setting" type="range" min="0.004" max="0.025" value="0.012" step="0.001" oninput="setFogDensity(this.value)">
+                        </div>
+                    </section>
+                    <section class="option-tab-page" data-option-page="audio">
+                        <div class="menu-section"><h3>🔊 ÁUDIO</h3><div class="setting-label">VOLUME GERAL</div><input id="master-volume" class="range-setting" type="range" min="0" max="100" value="75"><p style="color:#aaa;margin-top:12px;font-size:13px">O volume será aplicado aos efeitos sonoros adicionados à partida.</p></div>
+                    </section>
+                    <section class="option-tab-page" data-option-page="sensitivity">
+                        <div class="menu-section"><h3>🎯 SENSIBILIDADE</h3><div class="setting-label">MOUSE / TOQUE</div><input class="range-setting" type="range" min="0.5" max="3" value="1" step="0.1" oninput="lookSensitivity=Number(this.value)"><p style="color:#aaa;margin-top:12px;font-size:13px">Ajuste aplicado imediatamente à câmera.</p></div>
+                    </section>
+                    <section class="option-tab-page" data-option-page="credits">
+                        <div class="menu-section"><h3>⭐ CRÉDITOS</h3><p style="font-size:16px;line-height:1.8;color:#e5e7eb">Criado por:<br><strong>Codex</strong><br><strong>Matheus (Plump)</strong></p></div>
+                    </section>
                 </div>
-
-                <div class="menu-section">
-                    <h3>💾 DOWNLOAD DO JOGO</h3>
-                    <button class="opt-btn active" style="width:100%; margin-top:5px; padding:12px; font-size:14px; background:linear-gradient(180deg, #e67e22 0%, #d35400 100%); border-color:#f39c12; color:white;" onclick="downloadHTML()">💾 BAIXAR ARQUIVO HTML COMPLETO</button>
-                </div>
-
-                <div class="menu-section">
-                    <h3>🎮 CONTROLES</h3>
-                    <div style="font-size: 13px; color: #ccc; line-height: 1.6;">
-                        • <b>WASD:</b> Movimentação do personagem.<br>
-                        • <b>Mouse / Touch:</b> Olhar / Virar câmera.<br>
-                        • <b>Botão Esquerdo / FOGO:</b> Atirar.<br>
-                        • <b>R:</b> Recarregar arma (pente ejetado para frente).<br>
-                        • <b>Espaço / PULO:</b> Pular.<br>
-                        • <b>ESC / Botão Menu:</b> Pausar / Abrir Menu.<br>
-                        • <b>Q/E no espectador:</b> Trocar jogador observado.
-                    </div>
-                </div>
-
+                <footer class="options-tabs">
+                    <button class="options-tab active" onclick="showOptionsTab('accessibility', this)">Acessibilidade</button>
+                    <button class="options-tab" onclick="showOptionsTab('graphics', this)">Gráficos</button>
+                    <button class="options-tab" onclick="showOptionsTab('audio', this)">Áudio</button>
+                    <button class="options-tab" onclick="showOptionsTab('sensitivity', this)">Sensibilidade</button>
+                    <button class="options-tab" onclick="showOptionsTab('credits', this)">Créditos</button>
+                </footer>
                 <button class="btn-back-cs" onclick="closeSubpanel()">‹ VOLTAR</button>
             </div>
         </div>
@@ -768,9 +787,9 @@
 
         // Function to download the original HTML source file directly from the game menu
         async function downloadHTML() {
-            const sourceUrl = new URL("mini_cs1.6_v12%20.html", window.location.href);
+            const sourceUrl = new URL("CS1.6PLH.html", window.location.href);
             const a = document.createElement("a");
-            a.download = "mini_cs1.6_v12 .html";
+            a.download = "CS1.6PLH.html";
             try {
                 const response = await fetch(sourceUrl.href, { cache: "no-store" });
                 if (!response.ok) throw new Error("Unable to fetch original HTML file");
@@ -806,6 +825,20 @@
         function updateMatchSetting(key, value) {
             matchSettings[key] = parseInt(value, 10);
             updateRoundInfo();
+        }
+
+        function showOptionsTab(tabName, button) {
+            document.querySelectorAll('.option-tab-page').forEach(page => page.classList.toggle('active', page.dataset.optionPage === tabName));
+            document.querySelectorAll('.options-tab').forEach(tab => tab.classList.toggle('active', tab === button));
+        }
+
+        function setShadowQuality(enabled, button) {
+            renderer.shadowMap.enabled = enabled;
+            button.parentElement.querySelectorAll('.opt-btn').forEach(item => item.classList.toggle('active', item === button));
+        }
+
+        function setFogDensity(value) {
+            scene.fog.density = Number(value);
         }
 
         function exitGame() {
@@ -869,18 +902,36 @@
             document.getElementById('btn-team-t').classList.toggle('active', team === 'T');
         }
 
-        function setWeapon(wKey) {
+        function setWeapon(wKey, button = null) {
             selectedWeaponKey = wKey;
             const buttons = document.querySelectorAll('#weapon-picker .opt-btn');
             buttons.forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
+            (button || document.activeElement)?.classList.add('active');
         }
 
-        function setCrosshairStyle(styleName) {
+        function equipWeapon(wKey) {
+            if (gameFrozen || player.isReloading || !player.isAlive || !WEAPONS[wKey] || player.weapon === WEAPONS[wKey]) return;
+            player.isReloading = true;
+            weaponGroup.position.y = -0.55;
+            weaponGroup.rotation.z = -0.18;
+            setTimeout(() => {
+                player.weapon = WEAPONS[wKey];
+                player.ammo = player.weapon.maxAmmo;
+                player.maxAmmo = player.weapon.maxAmmo;
+                build3DWeapon(wKey);
+                document.getElementById('weapon-label').innerText = player.weapon.name.toUpperCase();
+                weaponGroup.position.y = 0;
+                weaponGroup.rotation.z = 0;
+                player.isReloading = false;
+                updateHUD();
+            }, 150);
+        }
+
+        function setCrosshairStyle(styleName, button = null) {
             selectedCrosshair = styleName;
             const buttons = document.querySelectorAll('#crosshair-picker .opt-btn');
             buttons.forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
+            (button || document.activeElement)?.classList.add('active');
 
             const container = document.getElementById('crosshair-element');
             container.className = '';
@@ -899,11 +950,11 @@
             }
         }
 
-        function setCrosshairSize(scale) {
+        function setCrosshairSize(scale, button = null) {
             crosshairScale = scale;
             const buttons = document.querySelectorAll('#crosshair-size-picker .opt-btn');
             buttons.forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
+            (button || document.activeElement)?.classList.add('active');
             document.getElementById('crosshair-container').style.transform = `translate(-50%, -50%) scale(${scale})`;
         }
 
@@ -1137,10 +1188,18 @@
             const model = buildLowPolyWeaponModel(weaponName, 1.75, false);
             model.position.set(0.2, -0.22, -0.48);
             weaponGroup.add(model);
+            const sleeve = new THREE.MeshStandardMaterial({ color: player.team === 'T' ? 0x654321 : 0x244f73, roughness: 0.9 });
+            addBlockWeaponPart(weaponGroup, {x:0.22,y:0.22,z:0.7}, {x:-0.32,y:-0.35,z:-0.05}, sleeve, {x:-0.28,y:0,z:-0.08});
+            addBlockWeaponPart(weaponGroup, {x:0.22,y:0.22,z:0.62}, {x:0.42,y:-0.32,z:-0.02}, sleeve, {x:-0.34,y:0,z:0.12});
             const muzzle = new THREE.PointLight(0xffaa00, 0, 4);
             muzzle.name = 'muzzle';
             muzzle.position.set(0, 0.04, -1.05);
             weaponGroup.add(muzzle);
+            const flash = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.28), new THREE.MeshBasicMaterial({ color: 0xffd15c }));
+            flash.name = 'muzzle-flash';
+            flash.position.set(0, 0.04, -1.12);
+            flash.visible = false;
+            weaponGroup.add(flash);
         }
 
         function createBotWeaponMesh(weaponName) {
@@ -1155,13 +1214,17 @@
         scene.add(camera);
 
         const keys = {};
-        let pitch = 0, yaw = 0;
+        let pitch = 0, yaw = 0, lookSensitivity = 1;
 
         window.addEventListener('keydown', (e) => {
             keys[e.code] = true;
             if (spectatorState.active && e.code === 'KeyQ') switchSpectator(-1);
             if (spectatorState.active && e.code === 'KeyE') switchSpectator(1);
             if (e.code === 'KeyR') reloadWeapon();
+            if (!spectatorState.active && ['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) {
+                const arsenal = ['Glock', 'AK47', 'AWP', 'Shotgun'];
+                equipWeapon(arsenal[Number(e.code.slice(-1)) - 1]);
+            }
             if (e.code === 'Escape') pauseGameAndMenu();
         });
         window.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -1197,8 +1260,8 @@
 
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === document.body && !gameFrozen) {
-                yaw -= e.movementX * 0.0022;
-                pitch -= e.movementY * 0.0022;
+                yaw -= e.movementX * 0.0022 * lookSensitivity;
+                pitch -= e.movementY * 0.0022 * lookSensitivity;
                 pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
             }
         });
@@ -1343,16 +1406,19 @@
             updateHUD();
 
             const muzzle = weaponGroup.getObjectByName('muzzle');
+            const flash = weaponGroup.getObjectByName('muzzle-flash');
             weaponGroup.position.z += 0.08;
             weaponGroup.rotation.x += 0.12;
             if (slideMesh) slideMesh.position.z += 0.05;
             if (muzzle) muzzle.intensity = 3;
+            if (flash) { flash.visible = true; flash.rotation.z = Math.random() * Math.PI; }
 
             setTimeout(() => {
                 weaponGroup.position.z -= 0.08;
                 weaponGroup.rotation.x -= 0.12;
                 if (slideMesh) slideMesh.position.z -= 0.05;
                 if (muzzle) muzzle.intensity = 0;
+                if (flash) flash.visible = false;
             }, 60);
 
             const startPos = new THREE.Vector3();
@@ -1542,17 +1608,22 @@
 
         function createBotMesh(colorHex, weaponName) {
             const group = new THREE.Group();
-            const mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.5 });
-
-            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 1.7, 8), mat);
-            body.position.y = 0.85;
-            body.castShadow = true;
-            group.add(body);
-
-            const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffcc99 }));
-            head.position.y = 1.8;
-            head.castShadow = true;
-            group.add(head);
+            const uniform = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.75 });
+            const dark = new THREE.MeshStandardMaterial({ color: 0x20252b, roughness: 0.85 });
+            const skin = new THREE.MeshStandardMaterial({ color: 0xd9a272, roughness: 0.9 });
+            const addPart = (size, position, material) => {
+                const part = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+                part.position.set(...position);
+                part.castShadow = true;
+                group.add(part);
+            };
+            addPart([0.8, 0.9, 0.42], [0, 1.15, 0], uniform);
+            addPart([0.48, 0.48, 0.48], [0, 1.86, 0], skin);
+            addPart([0.54, 0.16, 0.52], [0, 2.12, 0], dark);
+            addPart([0.25, 0.78, 0.28], [-0.25, 0.42, 0], dark);
+            addPart([0.25, 0.78, 0.28], [0.25, 0.42, 0], dark);
+            addPart([0.22, 0.72, 0.24], [-0.52, 1.17, 0.04], uniform);
+            addPart([0.22, 0.72, 0.24], [0.52, 1.17, 0.04], uniform);
 
             const botWeapon = createBotWeaponMesh(weaponName);
             group.add(botWeapon);
@@ -1713,14 +1784,14 @@
             if (player.isAlive && isEnemy(bot, player.team, true)) {
                 const d = bot.mesh.position.distanceTo(camera.position);
                 const visible = d < 55 && hasLineOfSight(bot.mesh.position.clone().add(new THREE.Vector3(0,1.3,0)), camera.position.clone());
-                const score = d - (visible ? 18 : 0);
+                const score = d - (visible ? 22 : 0) - (player.hp < 40 ? 7 : 0);
                 if (score < bestScore) { bestScore = score; best = { position: camera.position, isPlayer: true, team: player.team, distance: d, visible }; }
             }
             bots.forEach(other => {
                 if (other !== bot && other.isAlive && isEnemy(bot, other.team)) {
                     const d = bot.mesh.position.distanceTo(other.mesh.position);
                     const visible = d < 55 && hasLineOfSight(bot.mesh.position.clone().add(new THREE.Vector3(0,1.3,0)), other.mesh.position.clone().add(new THREE.Vector3(0,1.1,0)));
-                    const score = d - (visible ? 18 : 0);
+                    const score = d - (visible ? 22 : 0) - (other.hp < 40 ? 7 : 0) - (other.lastShoot && Date.now() - other.lastShoot < 1200 ? 4 : 0);
                     if (score < bestScore) { bestScore = score; best = { position: other.mesh.position, bot: other, isPlayer: false, team: other.team, distance: d, visible }; }
                 }
             });
@@ -1769,14 +1840,17 @@
             for (const attempt of attempts) {
                 const nx = old.x + attempt.x * step;
                 const nz = old.z + attempt.z * step;
-                if (!checkCollisions(nx, nz, bot.radius)) {
+                const crowdsBot = bots.some(other => other !== bot && other.isAlive && Math.hypot(other.mesh.position.x - nx, other.mesh.position.z - nz) < bot.radius + other.radius);
+                if (!checkCollisions(nx, nz, bot.radius) && !crowdsBot) {
                     bot.mesh.position.x = THREE.MathUtils.clamp(nx, -MAP_SIZE/2+3, MAP_SIZE/2-3);
                     bot.mesh.position.z = THREE.MathUtils.clamp(nz, -MAP_SIZE/2+3, MAP_SIZE/2-3);
                     return true;
                 }
             }
             if (Date.now() > bot.routeChangeAt) {
-                bot.waypoint = old.clone().add(new THREE.Vector3(-dir.z,0,dir.x).multiplyScalar((Math.random() < 0.5 ? -1 : 1) * (8 + Math.random()*8)));
+                const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar((Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 8));
+                bot.waypoint = old.clone().add(side);
+                if (checkCollisions(bot.waypoint.x, bot.waypoint.z, bot.radius)) bot.waypoint = getPatrolPoint(bot);
                 bot.routeChangeAt = Date.now() + 900;
             }
             return false;
@@ -1851,7 +1925,17 @@
 
             if (bot.mesh.position.distanceTo(bot.lastPos) < 0.02) {
                 bot.stuckTime += delta;
-                if (bot.stuckTime > 0.45) { bot.waypoint = getPatrolPoint(bot); bot.coverPos = null; bot.flankSide *= -1; bot.stuckTime = 0; }
+                if (bot.stuckTime > 0.45) {
+                    bot.waypoint = getPatrolPoint(bot);
+                    bot.coverPos = null;
+                    bot.flankSide *= -1;
+                    bot.routeChangeAt = 0;
+                    /* Pequeno recuo libera quinas antes de tentar a nova rota. */
+                    const escape = new THREE.Vector3().subVectors(bot.mesh.position, destination).setY(0).normalize().multiplyScalar(0.8);
+                    const ex = bot.mesh.position.x + escape.x, ez = bot.mesh.position.z + escape.z;
+                    if (!checkCollisions(ex, ez, bot.radius)) bot.mesh.position.set(ex, 0, ez);
+                    bot.stuckTime = 0;
+                }
             } else bot.stuckTime = 0;
             bot.lastPos.copy(bot.mesh.position);
         }
