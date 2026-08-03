@@ -48,6 +48,13 @@
         output { min-width: 42px; color: var(--gold); font-size: 12px; text-align: right; }
         .check-line { display: flex; align-items: center; gap: 9px; min-height: 34px; padding: 6px 9px; border: 1px solid #3c4449; background: #111619; color: #ddd; font-size: 13px; }
         .check-line input { accent-color: var(--gold); }
+        .map-file-tools { display: grid; gap: 8px; padding: 10px; border: 1px solid #3c4449; background: #111619; }
+        .map-file-tools input[type="file"] { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+        .map-file-status { display: grid; gap: 3px; color: #bfc4c3; font-size: 12px; }
+        .map-file-status strong { color: #eee; overflow-wrap: anywhere; }
+        #map-load-message[data-state="success"] { color: #79d98c; }
+        #map-load-message[data-state="error"] { color: #ff8585; }
+        #remove-map-file:disabled { cursor: not-allowed; opacity: .45; }
         .mode-fields { display: none; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 18px; padding-top: 5px; }
         .mode-fields.active { display: grid; animation: fade .18s ease-out; }
         .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 12px; border-top: 1px solid #394146; }
@@ -106,6 +113,17 @@
                     <div class="form-grid">
                         <div class="field"><label for="game-mode">Modo de jogo</label><select id="game-mode"><option value="tdm">Team Deathmatch (TDM)</option><option value="dm">Deathmatch (DM)</option><option value="bomb">Bomb</option></select></div>
                         <div class="field"><label for="map">Mapa</label><select id="map"></select></div>
+                        <div class="field full map-file-tools">
+                            <span class="group-title">Carregar mapa (.JS)</span>
+                            <input type="file" id="map-file-input" accept=".js,application/javascript,text/javascript">
+                            <label class="secondary-button" for="map-file-input" role="button" tabindex="0">Carregar arquivo .JS</label>
+                            <div class="map-file-status" aria-live="polite">
+                                <span>Arquivo carregado: <strong id="map-file-name">nenhum</strong></span>
+                                <span>Mapa registrado: <strong id="loaded-map-name">nenhum</strong></span>
+                                <span id="map-load-message"></span>
+                            </div>
+                            <button class="secondary-button" id="remove-map-file" type="button" disabled>Remover mapa carregado</button>
+                        </div>
                         <div class="mode-fields active" data-mode-fields="tdm bomb">
                             <div class="field"><label for="round-time">Tempo por rodada</label><select id="round-time"><option>2 minutos</option><option selected>3 minutos</option><option>5 minutos</option></select></div>
                             <div class="field"><label for="best-of">Melhor de</label><select id="best-of"><option>3</option><option>5</option><option>7</option></select></div>
@@ -238,6 +256,125 @@
     const modeSelect = document.getElementById("game-mode");
     const mapSelect = document.getElementById("map");
     Object.entries(MAP_CATALOG).forEach(([id, info]) => mapSelect.add(new Option(info.name, id)));
+    const mapFileInput = document.getElementById("map-file-input");
+    const mapFileName = document.getElementById("map-file-name");
+    const loadedMapName = document.getElementById("loaded-map-name");
+    const mapLoadMessage = document.getElementById("map-load-message");
+    const removeMapFileButton = document.getElementById("remove-map-file");
+    let importedMap = null;
+
+    function validateMapDefinition(registryId, definition) {
+        if (!definition || typeof definition !== "object") throw new Error("O mapa registrado é inválido.");
+        if (typeof definition.id !== "string" || !definition.id.trim() || definition.id !== registryId) throw new Error("O mapa não possui um ID válido.");
+        if (typeof definition.name !== "string" || !definition.name.trim()) throw new Error("O mapa não possui um nome válido.");
+        if (!(definition.build instanceof Function)) throw new Error("O mapa não possui a função build.");
+        const spawns = definition.spawns;
+        if (!spawns || !["CT", "TR", "DM"].every((team) => Array.isArray(spawns[team]))) throw new Error("O mapa não possui spawns válidos.");
+        return definition;
+    }
+
+    function setMapFileStatus(fileName, mapName, message, state = "") {
+        mapFileName.textContent = fileName || "nenhum";
+        loadedMapName.textContent = mapName || "nenhum";
+        mapLoadMessage.textContent = message;
+        mapLoadMessage.dataset.state = state;
+    }
+
+    function removeImportedMap({ clearStatus = true } = {}) {
+        if (importedMap) {
+            [...mapSelect.options].find((option) => option.dataset.importedMap === importedMap.id)?.remove();
+            importedMap.script.remove();
+            URL.revokeObjectURL(importedMap.url);
+            delete window.GAME_MAPS[importedMap.id];
+            importedMap = null;
+        }
+        mapFileInput.value = "";
+        mapSelect.value = "de_dust2";
+        selectedMap = mapSelect.value;
+        removeMapFileButton.disabled = true;
+        if (clearStatus) setMapFileStatus("nenhum", "nenhum", "");
+    }
+
+    function readLocalFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.addEventListener("load", () => resolve(String(reader.result)), { once: true });
+            reader.addEventListener("error", () => reject(reader.error || new Error("Não foi possível ler o arquivo.")), { once: true });
+            reader.readAsText(file);
+        });
+    }
+
+    function executeImportedMap(source, fileName) {
+        return new Promise((resolve, reject) => {
+            const previousMaps = new Map(Object.entries(window.GAME_MAPS));
+            const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+            const script = document.createElement("script");
+            script.src = url;
+            script.async = true;
+            script.dataset.importedMapFile = fileName;
+            let executionError = null;
+            const captureError = (event) => {
+                if (event.filename === url || event.target === script) executionError = event.error || new Error(event.message || "Erro durante a execução do script.");
+            };
+            const cleanupFailure = (error) => {
+                window.removeEventListener("error", captureError, true);
+                script.remove();
+                URL.revokeObjectURL(url);
+                Object.keys(window.GAME_MAPS).forEach((id) => { if (!previousMaps.has(id)) delete window.GAME_MAPS[id]; });
+                previousMaps.forEach((definition, id) => { window.GAME_MAPS[id] = definition; });
+                reject(error);
+            };
+            window.addEventListener("error", captureError, true);
+            script.addEventListener("error", () => cleanupFailure(executionError || new Error("Erro durante a execução do script.")), { once: true });
+            script.addEventListener("load", () => {
+                window.removeEventListener("error", captureError, true);
+                if (executionError) return cleanupFailure(executionError);
+                try {
+                    for (const [id, definition] of previousMaps) {
+                        if (window.GAME_MAPS[id] !== definition) throw new Error(`Conflito com o ID ${id}.`);
+                    }
+                    const newIds = Object.keys(window.GAME_MAPS).filter((id) => !previousMaps.has(id));
+                    if (newIds.length !== 1) throw new Error("O arquivo deve registrar exatamente um mapa novo em window.GAME_MAPS.");
+                    const id = newIds[0];
+                    const definition = validateMapDefinition(id, window.GAME_MAPS[id]);
+                    resolve({ id, definition, script, url, fileName });
+                } catch (error) {
+                    cleanupFailure(error);
+                }
+            }, { once: true });
+            document.head.appendChild(script);
+        });
+    }
+
+    mapFileInput.addEventListener("change", async () => {
+        const file = mapFileInput.files?.[0];
+        if (!file) return;
+        removeImportedMap({ clearStatus: false });
+        setMapFileStatus(file.name, "nenhum", "Carregando mapa…");
+        try {
+            if (!/\.js$/i.test(file.name)) throw new Error("A extensão do arquivo deve ser .js.");
+            const source = await readLocalFile(file);
+            importedMap = await executeImportedMap(source, file.name);
+            const option = new Option(importedMap.definition.name, importedMap.id, true, true);
+            option.dataset.importedMap = importedMap.id;
+            mapSelect.add(option);
+            selectedMap = importedMap.id;
+            removeMapFileButton.disabled = false;
+            setMapFileStatus(file.name, importedMap.definition.name, "Mapa carregado com sucesso", "success");
+            showToast("Mapa carregado com sucesso");
+        } catch (error) {
+            console.error(error);
+            mapFileInput.value = "";
+            mapSelect.value = "de_dust2";
+            selectedMap = mapSelect.value;
+            setMapFileStatus(file.name, "nenhum", "Falha ao carregar o mapa", "error");
+            showToast(`Falha ao carregar o mapa. Arquivo: ${file.name}`);
+        }
+    });
+    removeMapFileButton.addEventListener("click", () => removeImportedMap());
+    document.querySelector('label[for="map-file-input"]').addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); mapFileInput.click(); }
+    });
     let selectedMap = mapSelect.value;
     mapSelect.addEventListener("change", () => { selectedMap = mapSelect.value; });
     const updateModeFields = () => document.querySelectorAll("[data-mode-fields]").forEach((group) => group.classList.toggle("active", group.dataset.modeFields.split(" ").includes(modeSelect.value)));
@@ -250,7 +387,9 @@
         startButton.disabled = true;
         startButton.textContent = "Carregando mapa…";
         try {
-            const mapDefinition = await loadMapScript(selectedMapInfo.script);
+            const mapDefinition = importedMap?.id === selectedMap
+                ? validateMapDefinition(importedMap.id, window.GAME_MAPS[importedMap.id])
+                : await loadMapScript(selectedMapInfo.script);
             const context = window.createGameContext instanceof Function
                 ? await window.createGameContext()
                 : window.GAME_CONTEXT;
@@ -263,7 +402,8 @@
         } catch (error) {
             console.error(error);
             closeWindows();
-            showToast(`Falha ao carregar o mapa ${selectedMap}. Arquivo: ${selectedMapInfo.script}`);
+            const fileName = importedMap?.id === selectedMap ? importedMap.fileName : selectedMapInfo?.script;
+            showToast(`Falha ao carregar o mapa ${selectedMap}. Arquivo: ${fileName || "desconhecido"}`);
         } finally {
             startButton.disabled = false;
             startButton.textContent = "Iniciar partida";
