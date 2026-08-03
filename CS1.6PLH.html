@@ -12,6 +12,7 @@
         button, select, input[type="color"], input[type="checkbox"], input[type="range"] { cursor: pointer; }
         button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #ffd27c; outline-offset: 2px; }
         #game-container { position: relative; width: 100%; height: 100%; }
+        #game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
         #menu-overlay {
             position: absolute; inset: 0; display: flex; align-items: flex-end; padding: clamp(18px, 4vw, 46px);
             background: radial-gradient(circle at 72% 45%, rgba(89, 98, 91, .25), transparent 26%),
@@ -70,6 +71,12 @@
         .credits strong { color: var(--gold); }
         #toast { position: absolute; top: 20px; left: 50%; z-index: 20; padding: 9px 15px; border: 1px solid var(--gold); background: #171c20; color: #fff; font-size: 12px; opacity: 0; pointer-events: none; transform: translate(-50%,-12px); transition: .2s; }
         #toast.show { opacity: 1; transform: translate(-50%,0); }
+        #error-overlay { position: absolute; inset: 0; z-index: 100; display: none; place-items: center; padding: 20px; background: rgba(4,6,7,.96); }
+        #error-overlay.open { display: grid; }
+        .error-card { width: min(620px,100%); padding: 24px; border: 1px solid #b95145; background: #1a2024; box-shadow: 0 20px 70px #000; }
+        .error-card h2 { margin-bottom: 12px; color: #ff7668; }
+        .error-card p { margin: 7px 0; line-height: 1.45; overflow-wrap: anywhere; }
+        .error-card strong { color: var(--gold); }
         @keyframes fade { from { opacity: 0; } }
         @keyframes pop { from { opacity: 0; transform: scale(.98) translateY(8px); } }
         @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
@@ -87,6 +94,9 @@
 </head>
 <body>
 <main id="game-container">
+    <div id="error-overlay" role="alertdialog" aria-modal="true" aria-labelledby="error-title">
+        <div class="error-card"><h2 id="error-title">Erro ao carregar o jogo</h2><p id="error-message"></p><p><strong>Função:</strong> <span id="error-function">inicialização</span></p><p><strong>Etapa:</strong> <span id="error-stage">carregar Three.js</span></p><button class="primary-button" id="error-back" type="button">Voltar ao menu</button></div>
+    </div>
     <section id="menu-overlay" aria-label="Menu principal">
         <div class="menu-home">
             <h1 class="brand">CS1.6PLH</h1>
@@ -172,6 +182,7 @@
         <div id="toast" role="status" aria-live="polite"></div>
     </section>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js" onerror="window.__threeLoadFailed = true"></script>
 <script>
     const MAP_ID = "de_dust2";
     const PLAYER_HEIGHT = 1.8;
@@ -212,9 +223,9 @@
         }
         const { THREE, scene } = context;
         const options = Object.assign({ shadows: false }, context.options);
-        const map = new THREE.Group();
+        const map = context.mapGroup;
+        if (!map) throw new TypeError("buildDust2Map requer mapGroup inicializado.");
         map.name = MAP_ID;
-        scene.add(map);
 
         const sectors = {};
         ["ground-and-bounds", "ct-spawn", "tr-spawn", "mid", "long-a", "short-a", "bombsite-a",
@@ -444,11 +455,7 @@
         });
 
         // 12. Iluminação quente e névoa opcional, sem sombras por padrão no celular.
-        const hemisphere = new THREE.HemisphereLight(0xffe4b0, 0x6e5a42, 1.25);
-        const sun = new THREE.DirectionalLight(0xffd294, 1.15);
-        sun.position.set(-35, 65, 30);
-        sun.castShadow = options.shadows;
-        sectors.ambience.add(hemisphere, sun);
+        // A iluminação é global e criada antes do mapa; não deve ser duplicada em reconstruções.
 
         // 13–15. Validam colisores, spawns e áreas de plantio antes de devolver o mapa.
         const spawnInsideSolid = (spawn) => colliders.some((collider) =>
@@ -470,7 +477,6 @@
             validation: { spawnClearance: true, connectedRegions: 11, minimumPassageWidth: 6 },
             stats: { meshes: meshes.length, colliders: colliders.length, materials: Object.keys(materials).length },
             dispose() {
-                scene.remove(map);
                 boxGeometries.forEach((geometry) => geometry.dispose());
                 planeGeometries.forEach((geometry) => geometry.dispose());
                 ownedGeometries.forEach((geometry) => geometry.dispose());
@@ -479,6 +485,90 @@
         };
     }
 
+    // Estado do jogo: criado uma única vez e compatível com abertura direta por file://.
+    let initializationStage = "carregar Three.js";
+    let scene;
+    let camera;
+    let renderer;
+    let mapGroup;
+    let currentGameMap = null;
+    const colliders = [];
+    const wallObjects = [];
+    const currentSpawns = { CT: [], TR: [], DM: [] };
+    const currentBombsites = {};
+
+    function showFatalError(error, involvedFunction, stage) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[${stage || initializationStage}] ${involvedFunction || "inicialização"}:`, error);
+        document.getElementById("error-message").textContent = `Erro ao carregar o mapa: ${message}`;
+        document.getElementById("error-function").textContent = involvedFunction || "inicialização";
+        document.getElementById("error-stage").textContent = stage || initializationStage;
+        document.getElementById("error-overlay").classList.add("open");
+    }
+
+    window.onerror = function (message, source, line, column, error) {
+        showFatalError(error || `${message} (${line}:${column})`, "window.onerror", initializationStage);
+        return false;
+    };
+    window.addEventListener("unhandledrejection", (event) => {
+        showFatalError(event.reason || "Promise rejeitada sem motivo informado", "unhandledrejection", initializationStage);
+    });
+
+    function clearCurrentMap() {
+        initializationStage = "limpar mapa anterior";
+        if (currentGameMap && typeof currentGameMap.dispose === "function") currentGameMap.dispose();
+        currentGameMap = null;
+        if (mapGroup) {
+            while (mapGroup.children.length) mapGroup.remove(mapGroup.children[0]);
+        }
+        colliders.length = 0;
+        wallObjects.length = 0;
+        currentSpawns.CT.length = 0;
+        currentSpawns.TR.length = 0;
+        currentSpawns.DM.length = 0;
+        Object.keys(currentBombsites).forEach((key) => delete currentBombsites[key]);
+    }
+
+    function initializeThreeRuntime() {
+        initializationStage = "carregar Three.js";
+        if (window.__threeLoadFailed || typeof window.THREE === "undefined") {
+            throw new Error("Não foi possível carregar o Three.js. Conecte-se à internet e abra o jogo novamente.");
+        }
+        initializationStage = "criar scene";
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87a6b5);
+        scene.fog = new THREE.Fog(0x87a6b5, 70, 155);
+        initializationStage = "criar camera";
+        camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 300);
+        initializationStage = "criar renderer";
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+        renderer.setSize(innerWidth, innerHeight);
+        renderer.domElement.id = "game-canvas";
+        document.getElementById("game-container").prepend(renderer.domElement);
+        initializationStage = "criar luzes";
+        const hemisphere = new THREE.HemisphereLight(0xffe4b0, 0x6e5a42, 1.25);
+        const sun = new THREE.DirectionalLight(0xffd294, 1.15);
+        sun.position.set(-35, 65, 30);
+        scene.add(hemisphere, sun);
+        initializationStage = "criar arrays globais de colisão";
+        mapGroup = new THREE.Group();
+        mapGroup.name = "map-group";
+        scene.add(mapGroup);
+        window.addEventListener("resize", () => {
+            camera.aspect = innerWidth / innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+        renderer.setAnimationLoop(() => renderer.render(scene, camera));
+        initializationStage = "iniciar menu";
+    }
+
+    try {
+        initializeThreeRuntime();
+    } catch (error) {
+        showFatalError(error, "initializeThreeRuntime", initializationStage);
+    }
 
     const backdrops = [...document.querySelectorAll(".modal-backdrop")];
     const toast = document.getElementById("toast");
@@ -503,28 +593,46 @@
     const modeSelect = document.getElementById("game-mode");
     const updateModeFields = () => document.querySelectorAll("[data-mode-fields]").forEach((group) => group.classList.toggle("active", group.dataset.modeFields.split(" ").includes(modeSelect.value)));
     modeSelect.addEventListener("change", updateModeFields);
-    document.getElementById("game-form").addEventListener("submit", async (event) => {
+    document.getElementById("game-form").addEventListener("submit", (event) => {
         event.preventDefault();
         const startButton = event.currentTarget.querySelector('[type="submit"]');
         startButton.disabled = true;
         startButton.textContent = "Iniciando partida…";
         try {
-            const context = window.createGameContext instanceof Function
-                ? await window.createGameContext()
-                : window.GAME_CONTEXT;
-            if (!context) throw new Error("O contexto do jogo não está disponível.");
+            if (!scene || !camera || !renderer || !mapGroup) throw new Error("O motor gráfico não foi inicializado.");
+            clearCurrentMap();
+            initializationStage = "construir mapa com buildDust2Map";
+            const context = { THREE, scene, mapGroup, colliders, wallObjects, options: { shadows: false } };
             const builtMap = buildDust2Map(context);
+            initializationStage = "validar spawns";
+            if (!builtMap.spawns || !builtMap.spawns.CT?.length || !builtMap.spawns.TR?.length || !builtMap.spawns.DM?.length) throw new Error("Spawns obrigatórios não foram criados.");
+            currentSpawns.CT.push(...builtMap.spawns.CT);
+            currentSpawns.TR.push(...builtMap.spawns.TR);
+            currentSpawns.DM.push(...builtMap.spawns.DM);
+            Object.assign(currentBombsites, builtMap.bombsites);
+            initializationStage = "posicionar jogadores";
+            const mode = modeSelect.value;
+            const spawn = mode === "dm" ? currentSpawns.DM[0] : currentSpawns.CT[0];
+            camera.position.set(spawn.x, PLAYER_HEIGHT, spawn.z);
+            camera.rotation.set(0, spawn.yaw, 0, "YXZ");
+            initializationStage = "iniciar partida";
+            currentGameMap = builtMap;
             window.currentGameMap = builtMap;
             closeWindows();
             document.getElementById("menu-overlay").hidden = true;
             window.dispatchEvent(new CustomEvent("game-map-ready", { detail: { id: "de_dust2", map: builtMap } }));
         } catch (error) {
-            console.error(error);
-            showToast("Não foi possível iniciar a partida em de_dust2.");
+            showFatalError(error, "buildDust2Map", initializationStage);
         } finally {
             startButton.disabled = false;
             startButton.textContent = "Iniciar partida";
         }
+    });
+
+    document.getElementById("error-back").addEventListener("click", () => {
+        document.getElementById("error-overlay").classList.remove("open");
+        document.getElementById("menu-overlay").hidden = false;
+        closeWindows();
     });
 
     const bindings = [["Avançar","W"],["Recuar","S"],["Mover à esquerda","A"],["Mover à direita","D"],["Pular","Espaço"],["Agachar","Ctrl"],["Atirar","Mouse 1"],["Mira secundária","Mouse 2"],["Recarregar","R"],["Usar / interagir","E"],["Trocar arma","Q"],["Placar","Tab"]];
