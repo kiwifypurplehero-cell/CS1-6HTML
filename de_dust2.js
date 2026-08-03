@@ -1,21 +1,24 @@
 /*
- * Desert Arena — mapa competitivo original e low-poly para Three.js.
+ * de_dust2 — mapa competitivo e low-poly para Three.js.
  *
  * Uso:
- *   const arena = DesertArena.create(THREE, scene);
+ *   const arena = window.GAME_MAPS.de_dust2.build({ THREE, scene });
  *   // arena.colliders: AABBs para colisão
  *   // arena.navigation: nós e ligações para pathfinding de bots
  *   // arena.spawns.ct / arena.spawns.tr: posições iniciais seguras
  *   // arena.dispose(): libera geometrias, materiais e texturas
  */
-(function exposeDesertArena(root, factory) {
+(function registerDust2(root, factory) {
     const api = factory();
     if (typeof module === "object" && module.exports) module.exports = api;
-    if (root) root.DesertArena = api;
-}(typeof globalThis !== "undefined" ? globalThis : this, function desertArenaFactory() {
+    if (root) {
+        root.GAME_MAPS = root.GAME_MAPS || {};
+        root.GAME_MAPS.de_dust2 = api;
+    }
+}(typeof globalThis !== "undefined" ? globalThis : this, function dust2Factory() {
     "use strict";
 
-    const MAP_NAME = "de_sirocco_crossing";
+    const MAP_NAME = "de_dust2";
     const PLAYER_RADIUS = 0.72;
     const PLAYER_HEIGHT = 1.8;
 
@@ -174,7 +177,7 @@
     }
 
     function create(THREE, scene, options) {
-        if (!THREE || !scene) throw new TypeError("DesertArena.create requer THREE e uma scene.");
+        if (!THREE || !scene) throw new TypeError("de_dust2.build requer THREE e scene.");
         const settings = Object.assign({ shadows: false, labels: false }, options);
         const group = new THREE.Group();
         group.name = MAP_NAME;
@@ -281,5 +284,29 @@
         };
     }
 
-    return Object.freeze({ name: MAP_NAME, create, validateLayout });
+    function build(context) {
+        if (!context || typeof context !== "object") throw new TypeError("de_dust2.build requer um contexto do jogo.");
+        const arena = create(context.THREE, context.scene, context.options);
+        if (Array.isArray(context.colliders)) context.colliders.push(...arena.colliders);
+        if (Array.isArray(context.wallObjects)) context.wallObjects.push(...arena.group.children
+            .filter((object) => object.name !== "ground" && !object.name.startsWith("bombsite-")));
+        return arena;
+    }
+
+    const dmSpawns = [...SPAWNS.ct, ...SPAWNS.tr, [0, -30], [0, 30], [-43, 8], [47, 22]]
+        .map(([x, z]) => Object.freeze({ x, y: PLAYER_HEIGHT / 2, z }));
+    return Object.freeze({
+        id: MAP_NAME,
+        name: MAP_NAME,
+        build,
+        create,
+        validateLayout,
+        spawnCT: Object.freeze(SPAWNS.ct.map(([x, z]) => Object.freeze({ x, y: PLAYER_HEIGHT / 2, z }))),
+        spawnTR: Object.freeze(SPAWNS.tr.map(([x, z]) => Object.freeze({ x, y: PLAYER_HEIGHT / 2, z }))),
+        spawnsDM: Object.freeze(dmSpawns),
+        bombsiteA: Object.freeze({ ...SITES.a }),
+        bombsiteB: Object.freeze({ ...SITES.b }),
+        bounds: Object.freeze({ minX: -58, maxX: 58, minZ: -58, maxZ: 58 }),
+        pointsOfInterest: Object.freeze(NODES.map(([name, x, z]) => Object.freeze({ name, x, z }))),
+    });
 }));

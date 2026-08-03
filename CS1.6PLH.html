@@ -105,7 +105,7 @@
                 <form class="window-body" id="game-form">
                     <div class="form-grid">
                         <div class="field"><label for="game-mode">Modo de jogo</label><select id="game-mode"><option value="tdm">Team Deathmatch (TDM)</option><option value="dm">Deathmatch (DM)</option><option value="bomb">Bomb</option></select></div>
-                        <div class="field"><label for="map">Mapa</label><select id="map"><option>de_dust2</option></select></div>
+                        <div class="field"><label for="map">Mapa</label><select id="map"></select></div>
                         <div class="mode-fields active" data-mode-fields="tdm bomb">
                             <div class="field"><label for="round-time">Tempo por rodada</label><select id="round-time"><option>2 minutos</option><option selected>3 minutos</option><option>5 minutos</option></select></div>
                             <div class="field"><label for="best-of">Melhor de</label><select id="best-of"><option>3</option><option>5</option><option>7</option></select></div>
@@ -173,6 +173,48 @@
     </section>
 </main>
 <script>
+    const MAP_CATALOG = Object.freeze({
+        de_dust2: Object.freeze({ name: "de_dust2", script: "de_dust2.js" }),
+    });
+    const loadedMapScripts = new Map();
+    window.GAME_MAPS = window.GAME_MAPS || {};
+
+    /** Carrega e valida um mapa externo. Chamadas repetidas compartilham a mesma Promise. */
+    function loadMapScript(mapIdOrScript) {
+        const catalogEntry = MAP_CATALOG[mapIdOrScript];
+        const mapId = catalogEntry ? mapIdOrScript : Object.keys(MAP_CATALOG)
+            .find((id) => MAP_CATALOG[id].script === mapIdOrScript);
+        const scriptFile = catalogEntry?.script || mapIdOrScript;
+        if (!mapId || !scriptFile) return Promise.reject(new Error(`Mapa não catalogado: ${mapIdOrScript}.`));
+        if (window.GAME_MAPS[mapId]?.build instanceof Function) return Promise.resolve(window.GAME_MAPS[mapId]);
+        if (loadedMapScripts.has(scriptFile)) return loadedMapScripts.get(scriptFile);
+
+        const loading = new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = scriptFile;
+            script.async = true;
+            script.dataset.gameMap = mapId;
+            script.addEventListener("load", () => {
+                const definition = window.GAME_MAPS[mapId];
+                if (!definition || !(definition.build instanceof Function)) {
+                    loadedMapScripts.delete(scriptFile);
+                    reject(new Error(`O arquivo ${scriptFile} não registrou o mapa ${mapId}.`));
+                    return;
+                }
+                resolve(definition);
+            }, { once: true });
+            script.addEventListener("error", () => {
+                loadedMapScripts.delete(scriptFile);
+                script.remove();
+                reject(new Error(`Não foi possível carregar o arquivo ${scriptFile}.`));
+            }, { once: true });
+            document.head.appendChild(script);
+        });
+        loadedMapScripts.set(scriptFile, loading);
+        return loading;
+    }
+    window.loadMapScript = loadMapScript;
+
     const backdrops = [...document.querySelectorAll(".modal-backdrop")];
     const toast = document.getElementById("toast");
     const closeWindows = () => backdrops.forEach((modal) => modal.classList.remove("open"));
@@ -194,9 +236,39 @@
     }));
 
     const modeSelect = document.getElementById("game-mode");
+    const mapSelect = document.getElementById("map");
+    Object.entries(MAP_CATALOG).forEach(([id, info]) => mapSelect.add(new Option(info.name, id)));
+    let selectedMap = mapSelect.value;
+    mapSelect.addEventListener("change", () => { selectedMap = mapSelect.value; });
     const updateModeFields = () => document.querySelectorAll("[data-mode-fields]").forEach((group) => group.classList.toggle("active", group.dataset.modeFields.split(" ").includes(modeSelect.value)));
     modeSelect.addEventListener("change", updateModeFields);
-    document.getElementById("game-form").addEventListener("submit", (event) => { event.preventDefault(); closeWindows(); showToast(`Partida ${modeSelect.options[modeSelect.selectedIndex].text} configurada em de_dust2.`); });
+    document.getElementById("game-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        selectedMap = mapSelect.value;
+        const selectedMapInfo = MAP_CATALOG[selectedMap];
+        const startButton = event.currentTarget.querySelector('[type="submit"]');
+        startButton.disabled = true;
+        startButton.textContent = "Carregando mapa…";
+        try {
+            const mapDefinition = await loadMapScript(selectedMapInfo.script);
+            const context = window.createGameContext instanceof Function
+                ? await window.createGameContext()
+                : window.GAME_CONTEXT;
+            if (!context) throw new Error("O contexto do jogo não está disponível.");
+            const builtMap = await mapDefinition.build(context);
+            window.currentGameMap = builtMap;
+            closeWindows();
+            document.getElementById("menu-overlay").hidden = true;
+            window.dispatchEvent(new CustomEvent("game-map-ready", { detail: { id: selectedMap, map: builtMap } }));
+        } catch (error) {
+            console.error(error);
+            closeWindows();
+            showToast(`Falha ao carregar o mapa ${selectedMap}. Arquivo: ${selectedMapInfo.script}`);
+        } finally {
+            startButton.disabled = false;
+            startButton.textContent = "Iniciar partida";
+        }
+    });
 
     const bindings = [["Avançar","W"],["Recuar","S"],["Mover à esquerda","A"],["Mover à direita","D"],["Pular","Espaço"],["Agachar","Ctrl"],["Atirar","Mouse 1"],["Mira secundária","Mouse 2"],["Recarregar","R"],["Usar / interagir","E"],["Trocar arma","Q"],["Placar","Tab"]];
     document.getElementById("key-bindings").innerHTML = bindings.map(([name,key]) => `<label class="key-row"><span>${name}</span><input class="key-bind" type="text" value="${key}" aria-label="Tecla para ${name}"></label>`).join("");
