@@ -2,337 +2,213 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>CS1.6PLH</title>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        html,
-        body {
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: #000;
-            color: #fff;
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        button,
-        input {
-            font: inherit;
-        }
-
-        #game-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-        }
-
+        :root { --gold: #d6a148; --ink: #090c0f; --panel: #171c20; --line: #596168; --text: #e3e3dc; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #080a0b; color: var(--text); font-family: Arial, Helvetica, sans-serif; }
+        button, input, select { font: inherit; }
+        button, select, input[type="color"], input[type="checkbox"], input[type="range"] { cursor: pointer; }
+        button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #ffd27c; outline-offset: 2px; }
+        #game-container { position: relative; width: 100%; height: 100%; }
         #menu-overlay {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            align-items: flex-start;
-            padding: 28px 34px;
-            overflow-y: auto;
-            background: radial-gradient(circle, rgba(20, 25, 35, 0.92) 0%, rgba(10, 12, 18, 0.98) 100%);
+            position: absolute; inset: 0; display: flex; align-items: flex-end; padding: clamp(18px, 4vw, 46px);
+            background: radial-gradient(circle at 72% 45%, rgba(89, 98, 91, .25), transparent 26%),
+                linear-gradient(120deg, rgba(5, 7, 8, .98), rgba(18, 24, 27, .9)),
+                repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.012) 4px);
         }
-
-        .cs-title {
-            margin-bottom: 14px;
-            color: #de9b35;
-            font-family: Impact, "Segoe UI", sans-serif;
-            font-size: 34px;
-            font-weight: 900;
-            letter-spacing: 3px;
-            text-shadow: 0 0 15px rgba(222, 155, 53, 0.4), 2px 2px 4px #000;
+        #menu-overlay::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(214,161,72,.06), transparent 35%); }
+        .menu-home { position: relative; width: min(250px, 75vw); animation: rise .35s ease-out; }
+        .brand { margin-bottom: 18px; color: var(--gold); font-family: Impact, sans-serif; font-size: clamp(27px, 4vw, 38px); letter-spacing: 3px; text-shadow: 2px 2px #000; }
+        .main-nav { display: grid; gap: 5px; }
+        .menu-button, .secondary-button, .primary-button {
+            border: 1px solid #555e63; border-radius: 2px; color: #e9e9e2; font-weight: 700; text-transform: uppercase;
+            transition: background .18s, border-color .18s, color .18s, transform .18s;
         }
-
-        .cs-main-nav {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            width: 100%;
-            max-width: 270px;
-        }
-
-        .cs-menu-btn {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 9px 14px;
-            border: 1px solid #57657a;
-            border-left: 5px solid #de9b35;
-            border-radius: 4px;
-            background: linear-gradient(180deg, #3a4454 0%, #222933 100%);
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-            color: #e0e6ed;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 700;
-            text-align: left;
-            transition: 0.2s ease;
-        }
-
-        .cs-menu-btn:hover,
-        .cs-menu-btn:focus-visible {
-            border-color: #de9b35;
-            background: linear-gradient(180deg, #4f5d73 0%, #2f3947 100%);
-            box-shadow: 0 4px 15px rgba(222, 155, 53, 0.3);
-            color: #fff;
-            outline: none;
-            transform: translateX(4px);
-        }
-
-        .cs-subpanel {
-            display: none;
-            flex-direction: column;
-            width: 100%;
-            max-width: 600px;
-            max-height: 85vh;
-            padding: 20px;
-            overflow-y: auto;
-            border: 1px solid #455366;
-            border-radius: 8px;
-            background: rgba(18, 22, 30, 0.95);
-            box-shadow: 0 0 25px rgba(0, 0, 0, 0.8);
-        }
-
-        .cs-subpanel h2 {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 15px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #344152;
-            color: #de9b35;
-            font-size: 22px;
-        }
-
-        .menu-section {
-            width: 100%;
-            margin-bottom: 12px;
-            padding: 12px 16px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .menu-section h3 {
-            margin-bottom: 8px;
-            color: #f1c40f;
-            font-size: 15px;
-        }
-
-        .menu-section p {
-            color: #d7dde6;
-            font-size: 14px;
-            line-height: 1.7;
-        }
-
-        .setting-label {
-            margin: 10px 0 4px;
-            color: #aaa;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .range-setting {
-            width: 100%;
-            accent-color: #de9b35;
-        }
-
-        .options-content {
-            flex: 1;
-            padding-right: 3px;
-            overflow-y: auto;
-        }
-
-        .option-tab-page {
-            display: none;
-        }
-
-        .option-tab-page.active {
-            display: block;
-            animation: tab-fade 0.16s ease-out;
-        }
-
-        .options-tabs {
-            display: flex;
-            gap: 2px;
-            margin: 12px -20px 0;
-            padding: 8px 10px;
-            border-top: 1px solid #455366;
-            background: #11161e;
-        }
-
-        .options-tab {
-            flex: 1;
-            padding: 7px 4px;
-            border: 1px solid #455366;
-            border-radius: 3px;
-            background: #29313d;
-            color: #cbd5e1;
-            cursor: pointer;
-            font-size: 11px;
-            font-weight: 700;
-        }
-
-        .options-tab.active,
-        .options-tab:hover,
-        .options-tab:focus-visible {
-            border-color: #f2b857;
-            background: #de9b35;
-            color: #111;
-            outline: none;
-        }
-
-        .btn-back-cs {
-            align-self: flex-start;
-            margin-top: 10px;
-            padding: 10px 20px;
-            border: 0;
-            border-radius: 4px;
-            background: #4a5568;
-            color: #fff;
-            cursor: pointer;
-            font-weight: 700;
-        }
-
-        .btn-back-cs:hover,
-        .btn-back-cs:focus-visible {
-            background: #718096;
-            outline: none;
-        }
-
-        @keyframes tab-fade {
-            from { opacity: 0.45; transform: translateY(2px); }
-            to { opacity: 1; transform: none; }
-        }
-
-        @media (max-width: 650px) {
-            #menu-overlay { padding: 16px; }
-            .options-tabs { flex-wrap: wrap; }
-            .options-tab { min-width: 45%; }
+        .menu-button { width: 100%; padding: 8px 11px; background: linear-gradient(#30383d, #20262a); font-size: 12px; letter-spacing: .7px; text-align: left; }
+        .menu-button:hover { border-color: var(--gold); background: linear-gradient(#464f53, #293034); color: #fff; transform: translateX(4px); }
+        .menu-button::before { content: ""; display: inline-block; width: 4px; height: 10px; margin-right: 9px; background: var(--gold); }
+        .modal-backdrop { position: absolute; inset: 0; display: none; place-items: center; padding: 16px; background: rgba(0,0,0,.68); backdrop-filter: blur(3px); }
+        .modal-backdrop.open { display: grid; animation: fade .2s ease-out; }
+        .window { width: min(760px, 100%); max-height: min(84vh, 760px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #707980; border-radius: 3px; background: rgba(20,25,29,.98); box-shadow: 0 20px 70px #000; animation: pop .22s ease-out; }
+        .window-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 13px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, #343c40, #22282c); }
+        .window-header h2 { color: var(--gold); font-size: 15px; letter-spacing: 1.2px; text-transform: uppercase; }
+        .close-button { width: 27px; height: 25px; border: 1px solid #697177; background: #242a2e; color: #ddd; font-weight: bold; }
+        .close-button:hover { border-color: var(--gold); color: var(--gold); }
+        .window-body { padding: 16px; overflow-y: auto; scrollbar-color: var(--gold) #262c30; }
+        .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+        .field { display: grid; gap: 6px; }
+        .field.full { grid-column: 1 / -1; }
+        .field label, .group-title { color: #bfc4c3; font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; }
+        select, input[type="text"] { width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid #596168; border-radius: 2px; background: #0e1215; color: #eee; }
+        input[type="range"] { width: 100%; accent-color: var(--gold); }
+        input[type="color"] { width: 100%; height: 34px; padding: 2px; border: 1px solid #596168; background: #0e1215; }
+        .range-line { display: flex; align-items: center; gap: 10px; }
+        output { min-width: 42px; color: var(--gold); font-size: 12px; text-align: right; }
+        .check-line { display: flex; align-items: center; gap: 9px; min-height: 34px; padding: 6px 9px; border: 1px solid #3c4449; background: #111619; color: #ddd; font-size: 13px; }
+        .check-line input { accent-color: var(--gold); }
+        .mode-fields { display: none; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 18px; padding-top: 5px; }
+        .mode-fields.active { display: grid; animation: fade .18s ease-out; }
+        .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 12px; border-top: 1px solid #394146; }
+        .secondary-button, .primary-button { padding: 8px 15px; background: #30373b; font-size: 11px; }
+        .primary-button { border-color: #b88632; background: #9b6c25; color: #fff; }
+        .secondary-button:hover, .primary-button:hover { filter: brightness(1.2); }
+        .settings-layout { display: grid; grid-template-columns: 155px minmax(0,1fr); min-height: 430px; }
+        .tabs { display: flex; flex-direction: column; padding: 10px; border-right: 1px solid #434b50; background: #111619; }
+        .tab { padding: 9px; border: 0; border-bottom: 1px solid #30373b; background: transparent; color: #b8bdbc; font-size: 11px; font-weight: bold; text-align: left; text-transform: uppercase; }
+        .tab:hover, .tab.active { background: #30373b; color: var(--gold); }
+        .tab-page { display: none; padding: 16px; }
+        .tab-page.active { display: block; animation: fade .18s ease-out; }
+        .section { margin-bottom: 18px; }
+        .section h3 { margin-bottom: 11px; padding-bottom: 6px; border-bottom: 1px solid #3e464b; color: var(--gold); font-size: 12px; letter-spacing: .8px; text-transform: uppercase; }
+        .key-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px 14px; }
+        .key-row { display: grid; grid-template-columns: 1fr 90px; align-items: center; gap: 8px; font-size: 12px; }
+        .key-bind { min-height: 28px; padding: 4px; text-align: center; }
+        .notice { padding: 34px 15px; color: #c8ccca; font-size: 18px; text-align: center; }
+        .credits { padding: 28px; text-align: center; line-height: 1.8; }
+        .credits strong { color: var(--gold); }
+        #toast { position: absolute; top: 20px; left: 50%; z-index: 20; padding: 9px 15px; border: 1px solid var(--gold); background: #171c20; color: #fff; font-size: 12px; opacity: 0; pointer-events: none; transform: translate(-50%,-12px); transition: .2s; }
+        #toast.show { opacity: 1; transform: translate(-50%,0); }
+        @keyframes fade { from { opacity: 0; } }
+        @keyframes pop { from { opacity: 0; transform: scale(.98) translateY(8px); } }
+        @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+        @media (max-width: 620px) {
+            #menu-overlay { padding: 18px; }
+            .window { max-height: 92vh; }
+            .window-body { padding: 12px; }
+            .form-grid, .mode-fields, .key-grid { grid-template-columns: 1fr; }
+            .settings-layout { display: block; min-height: 0; }
+            .tabs { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid #434b50; }
+            .tab { flex: 0 0 auto; border-bottom: 0; border-right: 1px solid #30373b; }
+            .tab-page { padding: 13px; }
         }
     </style>
 </head>
 <body>
-    <main id="game-container">
-        <section id="menu-overlay" aria-label="Menu principal">
-            <h1 class="cs-title">CS1.6PLH</h1>
-
-            <nav class="cs-main-nav" id="main-nav-panel" aria-label="Navegação principal">
-                <button class="cs-menu-btn" type="button" data-open-panel="panel-multiplayer">
-                    <span>🌐 MULTIPLAYER</span><span aria-hidden="true">›</span>
-                </button>
-                <button class="cs-menu-btn" type="button" data-open-panel="panel-options">
-                    <span>⚙️ OPÇÕES</span><span aria-hidden="true">›</span>
-                </button>
-                <button class="cs-menu-btn" type="button" data-open-panel="panel-credits">
-                    <span>⭐ CRÉDITOS</span><span aria-hidden="true">›</span>
-                </button>
-                <button class="cs-menu-btn" id="exit-button" type="button">
-                    <span>🚪 SAIR DO JOGO</span><span aria-hidden="true">›</span>
-                </button>
+<main id="game-container">
+    <section id="menu-overlay" aria-label="Menu principal">
+        <div class="menu-home">
+            <h1 class="brand">CS1.6PLH</h1>
+            <nav class="main-nav">
+                <button class="menu-button" type="button" data-open="new-game">Novo jogo</button>
+                <button class="menu-button" type="button" data-open="servers">Procurar servidor</button>
+                <button class="menu-button" type="button" data-open="settings">Configurações</button>
+                <button class="menu-button" type="button" data-open="credits">Créditos</button>
+                <button class="menu-button" id="exit-button" type="button">Sair</button>
             </nav>
+        </div>
 
-            <section class="cs-subpanel" id="panel-multiplayer" role="dialog" aria-labelledby="multiplayer-title">
-                <h2 id="multiplayer-title">🌐 MULTIPLAYER</h2>
-                <div class="menu-section">
-                    <h3>CONEXÃO</h3>
-                    <p>Recursos de rede e gerenciamento de salas permanecem indisponíveis nesta versão.</p>
-                </div>
-                <button class="btn-back-cs" type="button" data-close-panel>‹ VOLTAR</button>
-            </section>
-
-            <section class="cs-subpanel" id="panel-options" role="dialog" aria-labelledby="options-title">
-                <h2 id="options-title">⚙️ OPÇÕES DO CS1.6PLH</h2>
-                <div class="options-content">
-                    <section class="option-tab-page active" data-option-page="audio">
-                        <div class="menu-section">
-                            <h3>🔊 ÁUDIO</h3>
-                            <label class="setting-label" for="master-volume">VOLUME GERAL</label>
-                            <input id="master-volume" class="range-setting" type="range" min="0" max="100" value="75">
+        <div class="modal-backdrop" id="new-game" role="dialog" aria-modal="true" aria-labelledby="new-game-title">
+            <section class="window">
+                <header class="window-header"><h2 id="new-game-title">Novo jogo</h2><button class="close-button" data-close type="button" aria-label="Fechar">×</button></header>
+                <form class="window-body" id="game-form">
+                    <div class="form-grid">
+                        <div class="field"><label for="game-mode">Modo de jogo</label><select id="game-mode"><option value="tdm">Team Deathmatch (TDM)</option><option value="dm">Deathmatch (DM)</option><option value="bomb">Bomb</option></select></div>
+                        <div class="field"><label for="map">Mapa</label><select id="map"><option>de_dust2</option></select></div>
+                        <div class="mode-fields active" data-mode-fields="tdm bomb">
+                            <div class="field"><label for="round-time">Tempo por rodada</label><select id="round-time"><option>2 minutos</option><option selected>3 minutos</option><option>5 minutos</option></select></div>
+                            <div class="field"><label for="best-of">Melhor de</label><select id="best-of"><option>3</option><option>5</option><option>7</option></select></div>
                         </div>
-                    </section>
-                    <section class="option-tab-page" data-option-page="interface">
-                        <div class="menu-section">
-                            <h3>🖥️ INTERFACE</h3>
-                            <p>A interface usa automaticamente o espaço disponível na tela.</p>
+                        <div class="mode-fields" data-mode-fields="dm">
+                            <div class="field full"><label for="match-time">Tempo da partida</label><select id="match-time"><option>5 minutos</option><option selected>10 minutos</option><option>15 minutos</option><option>20 minutos</option></select></div>
                         </div>
-                    </section>
-                </div>
-                <footer class="options-tabs">
-                    <button class="options-tab active" type="button" data-option-tab="audio">Áudio</button>
-                    <button class="options-tab" type="button" data-option-tab="interface">Interface</button>
-                </footer>
-                <button class="btn-back-cs" type="button" data-close-panel>‹ VOLTAR</button>
+                        <div class="field"><label for="bot-count">Quantidade de bots (1 até 15)</label><div class="range-line"><input id="bot-count" type="range" min="1" max="15" value="9"><output for="bot-count">9</output></div></div>
+                        <div class="field"><label for="difficulty">Dificuldade</label><select id="difficulty"><option>Fácil</option><option selected>Normal</option><option>Difícil</option><option>Especialista</option></select></div>
+                    </div>
+                    <div class="actions"><button class="secondary-button" data-close type="button">Cancelar</button><button class="primary-button" type="submit">Iniciar partida</button></div>
+                </form>
             </section>
+        </div>
 
-            <section class="cs-subpanel" id="panel-credits" role="dialog" aria-labelledby="credits-title">
-                <h2 id="credits-title">⭐ CRÉDITOS</h2>
-                <div class="menu-section">
-                    <h3>CRIADO POR</h3>
-                    <p><strong>Codex</strong><br><strong>Matheus (Plump)</strong></p>
+        <div class="modal-backdrop" id="servers" role="dialog" aria-modal="true" aria-labelledby="servers-title">
+            <section class="window"><header class="window-header"><h2 id="servers-title">Procurar servidor</h2><button class="close-button" data-close type="button" aria-label="Fechar">×</button></header><p class="notice">Em manutenção</p></section>
+        </div>
+
+        <div class="modal-backdrop" id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <section class="window">
+                <header class="window-header"><h2 id="settings-title">Configurações</h2><button class="close-button" data-close type="button" aria-label="Fechar">×</button></header>
+                <div class="settings-layout">
+                    <nav class="tabs" aria-label="Categorias de configurações">
+                        <button class="tab active" type="button" data-tab="accessibility">Acessibilidade</button>
+                        <button class="tab" type="button" data-tab="controls">Teclas e botões</button>
+                        <button class="tab" type="button" data-tab="graphics">Gráficos</button>
+                        <button class="tab" type="button" data-tab="audio">Áudio</button>
+                    </nav>
+                    <div class="window-body">
+                        <section class="tab-page active" data-page="accessibility">
+                            <div class="section"><h3>Personalização da mira</h3><div class="form-grid">
+                                <div class="field"><label for="crosshair-color">Cor da mira</label><input id="crosshair-color" type="color" value="#55ff55"></div>
+                                <div class="field"><label for="crosshair-size">Tamanho da mira</label><div class="range-line"><input id="crosshair-size" type="range" min="1" max="20" value="7"><output>7</output></div></div>
+                                <div class="field"><label for="crosshair-thickness">Espessura</label><div class="range-line"><input id="crosshair-thickness" type="range" min="1" max="10" value="2"><output>2</output></div></div>
+                                <div class="field"><label for="crosshair-opacity">Transparência</label><div class="range-line"><input id="crosshair-opacity" type="range" min="10" max="100" value="100"><output>100%</output></div></div>
+                                <label class="check-line"><input id="center-dot" type="checkbox" checked> Mostrar ponto central</label>
+                                <div class="field"><label for="brightness">Nível de brilho</label><div class="range-line"><input id="brightness" type="range" min="0" max="100" value="70"><output>70%</output></div></div>
+                            </div></div>
+                            <div class="section"><h3>Nomes dos jogadores</h3><div class="form-grid">
+                                <label class="check-line"><input id="show-names" type="checkbox" checked> Mostrar nome acima do personagem</label>
+                                <div class="field"><label for="ally-color">Cor do nome dos aliados</label><input id="ally-color" type="color" value="#63a8ff"></div>
+                                <div class="field"><label for="enemy-color">Cor do nome dos inimigos</label><input id="enemy-color" type="color" value="#ff6464"></div>
+                            </div></div>
+                        </section>
+                        <section class="tab-page" data-page="controls">
+                            <div class="section"><h3>Computador — teclas configuráveis</h3><div class="key-grid" id="key-bindings"></div></div>
+                            <div class="section"><h3>Celular — botões touch</h3><div class="form-grid" id="touch-settings"></div></div>
+                        </section>
+                        <section class="tab-page" data-page="graphics"><div class="section"><h3>Gráficos</h3><div class="form-grid">
+                            <div class="field"><label for="shadows">Sombras</label><select id="shadows"><option>Desligadas</option><option>Baixas</option><option selected>Altas</option></select></div>
+                            <div class="field"><label for="quality">Qualidade gráfica</label><select id="quality"><option>Baixa</option><option selected>Média</option><option>Alta</option></select></div>
+                            <div class="field full"><label for="render-distance">Distância de renderização</label><div class="range-line"><input id="render-distance" type="range" min="25" max="100" value="75"><output>75%</output></div></div>
+                        </div></div></section>
+                        <section class="tab-page" data-page="audio"><div class="section"><h3>Áudio</h3><div class="form-grid" id="audio-settings"></div></div></section>
+                    </div>
                 </div>
-                <button class="btn-back-cs" type="button" data-close-panel>‹ VOLTAR</button>
             </section>
-        </section>
-    </main>
+        </div>
 
-    <script>
-        const mainNavigation = document.getElementById("main-nav-panel");
-        const panels = [...document.querySelectorAll(".cs-subpanel")];
+        <div class="modal-backdrop" id="credits" role="dialog" aria-modal="true" aria-labelledby="credits-title">
+            <section class="window"><header class="window-header"><h2 id="credits-title">Créditos</h2><button class="close-button" data-close type="button" aria-label="Fechar">×</button></header><div class="credits">Criado por<br><strong>Codex</strong><br><strong>Matheus (Plump)</strong></div></section>
+        </div>
+        <div id="toast" role="status" aria-live="polite"></div>
+    </section>
+</main>
+<script>
+    const backdrops = [...document.querySelectorAll(".modal-backdrop")];
+    const toast = document.getElementById("toast");
+    const closeWindows = () => backdrops.forEach((modal) => modal.classList.remove("open"));
+    const showToast = (message) => { toast.textContent = message; toast.classList.add("show"); window.setTimeout(() => toast.classList.remove("show"), 2200); };
 
-        function closeSubpanel() {
-            panels.forEach((panel) => {
-                panel.style.display = "none";
-            });
-            mainNavigation.style.display = "flex";
-        }
+    document.querySelectorAll("[data-open]").forEach((button) => button.addEventListener("click", () => {
+        closeWindows();
+        const modal = document.getElementById(button.dataset.open);
+        modal.classList.add("open");
+        modal.querySelector("button, select, input")?.focus();
+    }));
+    document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", closeWindows));
+    backdrops.forEach((modal) => modal.addEventListener("click", (event) => { if (event.target === modal) closeWindows(); }));
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeWindows(); });
 
-        function openSubpanel(panelId) {
-            closeSubpanel();
-            mainNavigation.style.display = "none";
-            document.getElementById(panelId).style.display = "flex";
-        }
+    document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => {
+        document.querySelectorAll("[data-tab]").forEach((tab) => tab.classList.toggle("active", tab === button));
+        document.querySelectorAll("[data-page]").forEach((page) => page.classList.toggle("active", page.dataset.page === button.dataset.tab));
+    }));
 
-        function showOptionsTab(pageName, selectedButton) {
-            document.querySelectorAll("[data-option-page]").forEach((page) => {
-                page.classList.toggle("active", page.dataset.optionPage === pageName);
-            });
-            document.querySelectorAll("[data-option-tab]").forEach((button) => {
-                button.classList.toggle("active", button === selectedButton);
-            });
-        }
+    const modeSelect = document.getElementById("game-mode");
+    const updateModeFields = () => document.querySelectorAll("[data-mode-fields]").forEach((group) => group.classList.toggle("active", group.dataset.modeFields.split(" ").includes(modeSelect.value)));
+    modeSelect.addEventListener("change", updateModeFields);
+    document.getElementById("game-form").addEventListener("submit", (event) => { event.preventDefault(); closeWindows(); showToast(`Partida ${modeSelect.options[modeSelect.selectedIndex].text} configurada em de_dust2.`); });
 
-        document.querySelectorAll("[data-open-panel]").forEach((button) => {
-            button.addEventListener("click", () => openSubpanel(button.dataset.openPanel));
-        });
+    const bindings = [["Avançar","W"],["Recuar","S"],["Mover à esquerda","A"],["Mover à direita","D"],["Pular","Espaço"],["Agachar","Ctrl"],["Atirar","Mouse 1"],["Mira secundária","Mouse 2"],["Recarregar","R"],["Usar / interagir","E"],["Trocar arma","Q"],["Placar","Tab"]];
+    document.getElementById("key-bindings").innerHTML = bindings.map(([name,key]) => `<label class="key-row"><span>${name}</span><input class="key-bind" type="text" value="${key}" aria-label="Tecla para ${name}"></label>`).join("");
 
-        document.querySelectorAll("[data-close-panel]").forEach((button) => {
-            button.addEventListener("click", closeSubpanel);
-        });
+    const touch = [["Posição geral",0,100,50,"%"],["Tamanho",50,150,100,"%"],["Transparência",10,100,80,"%"],["Sensibilidade do analógico",1,10,5,""],["Posição do botão de tiro",0,100,80,"%"],["Posição do botão de pulo",0,100,70,"%"],["Posição do botão de recarga",0,100,60,"%"],["Posição do botão de trocar arma",0,100,50,"%"],["Posição do botão de interação",0,100,40,"%"]];
+    const audio = ["Volume geral","Música","Efeitos sonoros","Passos","Tiros","Interface"].map((name) => [name,0,100,name === "Música" ? 35 : 75,"%"]);
+    const rangeMarkup = ([name,min,max,value,suffix], index, prefix) => `<div class="field"><label for="${prefix}-${index}">${name}</label><div class="range-line"><input id="${prefix}-${index}" type="range" min="${min}" max="${max}" value="${value}"><output>${value}${suffix}</output></div></div>`;
+    document.getElementById("touch-settings").innerHTML = touch.map((item,index) => rangeMarkup(item,index,"touch")).join("");
+    document.getElementById("audio-settings").innerHTML = audio.map((item,index) => rangeMarkup(item,index,"audio")).join("");
+    document.querySelectorAll('input[type="range"]').forEach((input) => input.addEventListener("input", () => { const output = input.parentElement.querySelector("output"); if (output) output.value = input.value + (output.textContent.includes("%") ? "%" : ""); }));
 
-        document.querySelectorAll("[data-option-tab]").forEach((button) => {
-            button.addEventListener("click", () => showOptionsTab(button.dataset.optionTab, button));
-        });
-
-        document.getElementById("exit-button").addEventListener("click", () => {
-            window.close();
-        });
-
-        document.addEventListener("keydown", (event) => {
-            if (event.key === "Escape") closeSubpanel();
-        });
-    </script>
+    document.getElementById("exit-button").addEventListener("click", () => { window.close(); window.setTimeout(() => { if (!window.closed) showToast("O navegador impediu o fechamento automático desta janela."); }, 120); });
+</script>
 </body>
 </html>
