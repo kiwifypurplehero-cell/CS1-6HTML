@@ -34,8 +34,9 @@ function decodeFrames(ws, chunk, onMessage) {
 function makeCode() { for (let i = 0; i < 100; i++) { const code = Array.from({ length: 6 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join(''); if (!rooms.has(code)) return code; } throw new Error('room code exhausted'); }
 function playerInfo(ws, room) { return { id: ws.id, name: ws.name || 'Jogador', team: ws.team || 'ct', host: room.hostId === ws.id, status: 'conectado' }; }
 function playerList(room) { return [...room.players.values()].map(client => playerInfo(client, room)); }
-function roomSnapshot(room){ return { roomCode: room.code, hostId: room.hostId, options: room.options, minPlayers: room.minPlayers, maxPlayers: room.maxPlayers, players: playerList(room) }; }
-function sendPlayerList(room) { broadcast(room, { type: 'player_list', roomCode: room.code, players: playerList(room), minPlayers: room.minPlayers, maxPlayers: room.maxPlayers }); }
+function roomSnapshot(room){ return { hostId: room.hostId, players: playerList(room), settings: room.settings, options: room.settings, minPlayers: room.minPlayers, maxPlayers: room.maxPlayers }; }
+function roomState(room){ return { type: 'room_state', roomCode: room.code, room: roomSnapshot(room), ...roomSnapshot(room) }; }
+function sendPlayerList(room) { broadcast(room, { type: 'player_list', roomCode: room.code, players: playerList(room), room: roomSnapshot(room), minPlayers: room.minPlayers, maxPlayers: room.maxPlayers }); }
 function leaveRoom(ws, notify = true) {
   const room = rooms.get(ws.roomCode); if (!room) { ws.roomCode = null; return; }
   room.players.delete(ws.id); ws.roomCode = null;
@@ -47,21 +48,36 @@ function handleMessage(ws, raw) {
   let msg; try { msg = JSON.parse(raw); } catch { return roomError(ws, 'BAD_JSON', 'JSON inválido'); }
   if (msg.type === 'hello') return send(ws, { type: 'hello', playerId: ws.id, protocol: 'cs16plh-signaling-v2' });
   if (msg.type === 'create_room') {
-    leaveRoom(ws, false); const code = makeCode(); ws.name = msg.name || ws.name; ws.team = msg.team || 'ct';
-    const room = { code, version: msg.version, options: msg.options || {}, hostId: ws.id, maxPlayers: Math.max(2, Math.min(Number(msg.maxPlayers) || 8, 16)), minPlayers: 2, players: new Map([[ws.id, ws]]) };
-    ws.roomCode = code; rooms.set(code, room); send(ws, { type: 'room_created', playerId: ws.id, ...roomSnapshot(room) }); return sendPlayerList(room);
+    try {
+      const settings = msg.settings || msg.options || {};
+      if (!msg.playerName && !msg.name) return roomError(ws, 'CREATE_FAILED', 'Nome do jogador é obrigatório');
+      if (!settings.mode || !settings.map) return roomError(ws, 'CREATE_FAILED', 'Configurações da sala inválidas');
+      leaveRoom(ws, false);
+      const code = makeCode();
+      ws.name = msg.playerName || msg.name || ws.name || 'Jogador';
+      ws.team = msg.team || settings.team || (settings.mode === 'dm' ? 'dm' : 'ct');
+      const room = { code, version: msg.version || settings.version, settings, hostId: ws.id, maxPlayers: Math.max(2, Math.min(Number(msg.maxPlayers) || 8, 16)), minPlayers: 2, players: new Map([[ws.id, ws]]) };
+      ws.roomCode = code;
+      rooms.set(code, room);
+      send(ws, { type: 'room_created', roomCode: code, playerId: ws.id, room: roomSnapshot(room) });
+      send(ws, roomState(room));
+      return sendPlayerList(room);
+    } catch (error) {
+      console.error('create_room failed:', error);
+      return roomError(ws, 'CREATE_FAILED', 'Falha ao criar sala');
+    }
   }
   if (msg.type === 'join_room') {
     const code = String(msg.roomCode || '').trim().toUpperCase(); if (!/^[A-Z0-9]{6}$/.test(code)) return roomError(ws, 'INVALID_CODE', 'Código inválido', code);
     const room = rooms.get(code); if (!room) return roomError(ws, 'ROOM_NOT_FOUND', 'Sala inexistente', code);
     if (room.players.size >= room.maxPlayers) return roomError(ws, 'ROOM_FULL', 'Sala cheia', code);
-    if (room.version !== msg.version) return roomError(ws, 'VERSION_MISMATCH', 'Versão incompatível', code);
+    if (room.version && msg.version && room.version !== msg.version) return roomError(ws, 'VERSION_MISMATCH', 'Versão incompatível', code);
     leaveRoom(ws, false); ws.name = msg.name || ws.name; ws.team = msg.team || 'ct'; room.players.set(ws.id, ws); ws.roomCode = code;
-    send(ws, { type: 'room_joined', playerId: ws.id, ...roomSnapshot(room) }); return sendPlayerList(room);
+    send(ws, { type: 'room_joined', roomCode: code, playerId: ws.id, room: roomSnapshot(room), ...roomSnapshot(room) }); send(ws, roomState(room)); return sendPlayerList(room);
   }
   if (msg.type === 'leave_room') { leaveRoom(ws); return send(ws, { type: 'room_left' }); }
   const room = rooms.get(msg.roomCode || ws.roomCode); if (!room) return roomError(ws, 'ROOM_NOT_FOUND', 'Sala inexistente', msg.roomCode);
-  if (msg.type === 'start_match') { if (ws.id !== room.hostId) return roomError(ws, 'NOT_HOST', 'Apenas o host pode iniciar', room.code); if (room.players.size < room.minPlayers) return roomError(ws, 'NOT_ENOUGH_PLAYERS', 'A sala exige pelo menos dois jogadores', room.code); return broadcast(room, { type: 'start_match', roomCode: room.code, options: room.options }); }
+  if (msg.type === 'start_match') { if (ws.id !== room.hostId) return roomError(ws, 'NOT_HOST', 'Apenas o host pode iniciar', room.code); if (room.players.size < room.minPlayers) return roomError(ws, 'NOT_ENOUGH_PLAYERS', 'A sala exige pelo menos dois jogadores', room.code); return broadcast(room, { type: 'start_match', roomCode: room.code, options: room.settings }); }
   if (msg.type === 'signal') { const target = room.players.get(msg.to); if (target) send(target, { type: 'signal', roomCode: room.code, from: ws.id, signalType: msg.signalType, description: msg.description, candidate: msg.candidate }); }
 }
 function handleClose(ws) { clients.delete(ws); leaveRoom(ws); }
