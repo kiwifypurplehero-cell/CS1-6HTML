@@ -73,6 +73,23 @@
         #toast.show { opacity: 1; transform: translate(-50%,0); }
         #error-overlay { position: absolute; inset: 0; z-index: 100; display: none; place-items: center; padding: 20px; background: rgba(4,6,7,.96); }
         #error-overlay.open { display: grid; }
+        #loading-overlay { position: absolute; inset: 0; z-index: 80; display: none; place-items: center; background: #080b0d; color: var(--gold); font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+        #loading-overlay.open { display: grid; }
+        #hud { position: absolute; inset: 0; z-index: 10; display: none; pointer-events: none; font-weight: 800; text-shadow: 1px 1px 2px #000; }
+        #hud.visible { display: block; }
+        #health { position: absolute; left: 22px; bottom: 20px; color: #f3d36b; font-size: 24px; }
+        #match-info { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); color: #fff; }
+        #crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%,-50%); }
+        #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #55ff55; box-shadow: 0 0 2px #000; }
+        #crosshair::before { left: 8px; width: 2px; height: 18px; } #crosshair::after { top: 8px; width: 18px; height: 2px; }
+        #touch-controls { position: absolute; inset: 0; z-index: 14; display: none; pointer-events: none; touch-action: none; }
+        .touch-device #touch-controls.playing { display: block; }
+        #joystick, .touch-action, #look-area { pointer-events: auto; touch-action: none; user-select: none; }
+        #joystick { position: absolute; left: 24px; bottom: 26px; width: 118px; height: 118px; border: 2px solid #ffffff66; border-radius: 50%; background: #0005; }
+        #joystick-knob { position: absolute; left: 39px; top: 39px; width: 38px; height: 38px; border-radius: 50%; background: #ffffff99; }
+        #look-area { position: absolute; left: 42%; right: 0; top: 0; bottom: 0; }
+        .touch-action { position: absolute; width: 62px; height: 62px; border: 2px solid #ffffff88; border-radius: 50%; background: #1119; color: white; font-weight: bold; }
+        #touch-jump { right: 105px; bottom: 35px; } #touch-fire { right: 28px; bottom: 95px; background: #713b; } #touch-menu { right: 16px; top: 16px; width: 48px; height: 48px; }
         .error-card { width: min(620px,100%); padding: 24px; border: 1px solid #b95145; background: #1a2024; box-shadow: 0 20px 70px #000; }
         .error-card h2 { margin-bottom: 12px; color: #ff7668; }
         .error-card p { margin: 7px 0; line-height: 1.45; overflow-wrap: anywhere; }
@@ -116,6 +133,7 @@
                     <div class="form-grid">
                         <div class="field"><label for="game-mode">Modo de jogo</label><select id="game-mode"><option value="tdm">Team Deathmatch (TDM)</option><option value="dm">Deathmatch (DM)</option><option value="bomb">Bomb</option></select></div>
                         <div class="field"><label for="map">Mapa</label><select id="map"><option value="de_dust2">de_dust2</option></select></div>
+                        <div class="field"><label for="team">Equipe</label><select id="team"><option value="ct">Contra-Terrorista (CT)</option><option value="tr">Terrorista (TR)</option></select></div>
                         <div class="mode-fields active" data-mode-fields="tdm bomb">
                             <div class="field"><label for="round-time">Tempo por rodada</label><select id="round-time"><option>2 minutos</option><option selected>3 minutos</option><option>5 minutos</option></select></div>
                             <div class="field"><label for="best-of">Melhor de</label><select id="best-of"><option>3</option><option>5</option><option>7</option></select></div>
@@ -168,6 +186,7 @@
                         <section class="tab-page" data-page="graphics"><div class="section"><h3>Gráficos</h3><div class="form-grid">
                             <div class="field"><label for="shadows">Sombras</label><select id="shadows"><option>Desligadas</option><option>Baixas</option><option selected>Altas</option></select></div>
                             <div class="field"><label for="quality">Qualidade gráfica</label><select id="quality"><option>Baixa</option><option selected>Média</option><option>Alta</option></select></div>
+                            <div class="field"><label for="camera-fov">Campo de visão (FOV)</label><div class="range-line"><input id="camera-fov" type="range" min="60" max="100" value="75"><output>75°</output></div></div>
                             <div class="field full"><label for="render-distance">Distância de renderização</label><div class="range-line"><input id="render-distance" type="range" min="25" max="100" value="75"><output>75%</output></div></div>
                         </div></div></section>
                         <section class="tab-page" data-page="audio"><div class="section"><h3>Áudio</h3><div class="form-grid" id="audio-settings"></div></div></section>
@@ -180,389 +199,127 @@
             <section class="window"><header class="window-header"><h2 id="credits-title">Créditos</h2><button class="close-button" data-close type="button" aria-label="Fechar">×</button></header><div class="credits">Criado por<br><strong>Codex</strong><br><strong>Matheus (Plump)</strong></div></section>
         </div>
     </section>
+    <div id="loading-overlay" role="status" aria-live="polite"><span>Carregando de_dust2…</span></div>
+    <div id="hud"><div id="match-info">DE_DUST2</div><div id="crosshair"></div><div id="health">+ 100</div></div>
+    <div id="touch-controls"><div id="look-area" aria-label="Área de olhar"></div><div id="joystick"><div id="joystick-knob"></div></div><button id="touch-jump" class="touch-action" type="button">PULAR</button><button id="touch-fire" class="touch-action" type="button">TIRO</button><button id="touch-menu" class="touch-action" type="button">☰</button></div>
     <div id="toast" role="status" aria-live="polite"></div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js" onerror="window.__threeLoadFailed = true"></script>
 <script>
     const MAP_ID = "de_dust2";
-    const PLAYER_HEIGHT = 1.8;
-    const PLAYER_RADIUS = 0.65;
+    const PLAYER_HEIGHT = 1.75, PLAYER_RADIUS = .48;
     const BOUNDS = Object.freeze({ minX: -60, maxX: 60, minZ: -60, maxZ: 60 });
+    const GAME_STATES = Object.freeze({ MENU:"MENU", CARREGANDO:"CARREGANDO", JOGANDO:"JOGANDO", ERRO:"ERRO" });
+    let scene, camera, renderer, mapGroup, currentGameMap, currentMatchOptions, selectedMap = MAP_ID;
+    let gameState = GAME_STATES.MENU, controlsEnabled = false, lastFrame = performance.now();
+    const colliders = [], wallObjects = [], keys = Object.create(null);
+    const player = { position:null, velocity:null, height:PLAYER_HEIGHT, radius:PLAYER_RADIUS, speed:8.5, gravity:25, jumpSpeed:9, grounded:true, yaw:0, pitch:0, health:100 };
+    const touchMove = { x:0, z:0 };
 
-    function buildDust2Map(context = { THREE, scene, mapGroup, colliders, wallObjects }) {
-        if (!context || !context.THREE || !context.scene || !context.mapGroup) {
-            throw new TypeError("buildDust2Map requer { THREE, scene, mapGroup }.");
-        }
-
-        const { THREE, scene, mapGroup: map } = context;
-        map.name = MAP_ID;
-
-        const floorMaterial = new THREE.MeshStandardMaterial({
-            color: 0xc9a66b,
-            roughness: 0.9,
-            metalness: 0,
-        });
-        const floorGeometry = new THREE.PlaneGeometry(120, 120);
-        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-        floor.name = "de_dust2-floor";
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = false;
-        map.add(floor);
-
-        const boundaryMaterial = new THREE.MeshStandardMaterial({ color: 0x8d7048, roughness: 1 });
-        const boundaryGeometry = new THREE.BoxGeometry(1, 4, 1);
-        const boundaries = [
-            { name: "north-boundary", x: 0, z: BOUNDS.minZ, width: 120, depth: 1 },
-            { name: "south-boundary", x: 0, z: BOUNDS.maxZ, width: 120, depth: 1 },
-            { name: "west-boundary", x: BOUNDS.minX, z: 0, width: 1, depth: 120 },
-            { name: "east-boundary", x: BOUNDS.maxX, z: 0, width: 1, depth: 120 },
-        ];
-        const mapColliders = [];
-        boundaries.forEach((boundary) => {
-            const wall = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
-            wall.name = boundary.name;
-            wall.scale.set(boundary.width, 1, boundary.depth);
-            wall.position.set(boundary.x, 2, boundary.z);
-            map.add(wall);
-            mapColliders.push({
-                name: boundary.name,
-                min: { x: boundary.x - boundary.width / 2, y: 0, z: boundary.z - boundary.depth / 2 },
-                max: { x: boundary.x + boundary.width / 2, y: 4, z: boundary.z + boundary.depth / 2 },
-                solid: true,
-            });
-        });
-
-        const coverMaterial = new THREE.MeshStandardMaterial({ color: 0x9b7950, roughness: 0.95 });
-        const crateMaterial = new THREE.MeshStandardMaterial({ color: 0x765331, roughness: 1 });
-        const addSolid = (name, x, y, z, width, height, depth, material) => {
-            const geometry = new THREE.BoxGeometry(width, height, depth);
-            const object = new THREE.Mesh(geometry, material);
-            object.name = name;
-            object.position.set(x, y, z);
-            map.add(object);
-            mapColliders.push({
-                name,
-                min: { x: x - width / 2, y: 0, z: z - depth / 2 },
-                max: { x: x + width / 2, y: height, z: z + depth / 2 },
-                solid: true,
-            });
-            return object;
-        };
-        addSolid("mid-wall", -15, 2, -5, 2, 4, 24, coverMaterial);
-        addSolid("site-wall", 20, 2, 18, 22, 4, 2, coverMaterial);
-        addSolid("crate-a", -8, 1.5, 14, 3, 3, 3, crateMaterial);
-        addSolid("crate-b", 10, 1.5, -15, 3, 3, 3, crateMaterial);
-        addSolid("crate-c", 13.2, 1.5, -15, 3, 3, 3, crateMaterial);
-
-        const ambientLight = new THREE.HemisphereLight(0xffe4b0, 0x6e5a42, 1.2);
-        ambientLight.name = "de_dust2-ambient-light";
-        const sunLight = new THREE.DirectionalLight(0xffd294, 1.1);
-        sunLight.name = "de_dust2-sun-light";
-        sunLight.position.set(-25, 45, 20);
-        map.add(ambientLight, sunLight);
-
-        const spawns = Object.freeze({
-            ct: Object.freeze({ x: -38, y: PLAYER_HEIGHT, z: 35, yaw: Math.PI }),
-            tr: Object.freeze({ x: 38, y: PLAYER_HEIGHT, z: -35, yaw: 0 }),
-            dm: Object.freeze([
-                Object.freeze({ x: -35, y: PLAYER_HEIGHT, z: -30, yaw: 0 }),
-                Object.freeze({ x: 32, y: PLAYER_HEIGHT, z: 30, yaw: Math.PI }),
-                Object.freeze({ x: 0, y: PLAYER_HEIGHT, z: 28, yaw: Math.PI }),
-                Object.freeze({ x: 28, y: PLAYER_HEIGHT, z: 0, yaw: -Math.PI / 2 }),
-            ]),
-        });
-        const spawn = context.gameMode === "dm" ? spawns.dm[0] : spawns.ct;
-        if (Array.isArray(context.colliders)) context.colliders.push(...mapColliders);
-        if (Array.isArray(context.wallObjects)) context.wallObjects.push(...map.children.filter((object) => object.isMesh && object !== floor));
-
-        return {
-            id: MAP_ID,
-            name: MAP_ID,
-            group: map,
-            floor,
-            spawn,
-            spawns,
-            bounds: BOUNDS,
-            colliders: mapColliders,
-            dispose() {
-                floorGeometry.dispose();
-                boundaryGeometry.dispose();
-                floorMaterial.dispose();
-                boundaryMaterial.dispose();
-                coverMaterial.dispose();
-                crateMaterial.dispose();
-                map.traverse((object) => {
-                    if (object.isMesh && object !== floor && object.geometry !== boundaryGeometry) object.geometry.dispose();
-                });
-            },
-        };
-    }
-
-    const MAPS = Object.freeze({
-        de_dust2: Object.freeze({
-            name: "de_dust2",
-            build: buildDust2Map,
-        }),
-    });
-
-    // Estado do jogo: criado uma única vez e compatível com abertura direta por file://.
-    let initializationStage = "carregar Three.js";
-    let scene;
-    let camera;
-    let renderer;
-    let mapGroup;
-    let currentGameMap = null;
-    const colliders = [];
-    const wallObjects = [];
-    const GAME_STATES = Object.freeze({ MENU: "MENU", CARREGANDO: "CARREGANDO", CONTAGEM_REGRESSIVA: "CONTAGEM_REGRESSIVA", JOGANDO: "JOGANDO", ERRO: "ERRO" });
-    let gameState = GAME_STATES.MENU;
-    let controlsEnabled = false;
-    let currentMatchOptions = null;
-    let selectedMap = MAP_ID;
-    let countdownTimer = null;
-
-    function setGameState(nextState) {
-        gameState = nextState;
-        window.gameState = nextState;
-        window.dispatchEvent(new CustomEvent("game-state-change", { detail: { state: nextState } }));
-    }
-
-    function showFatalError(error, involvedFunction, stage) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`[${stage || initializationStage}] ${involvedFunction || "inicialização"}:`, error);
-        const mapErrorMessage = `Erro ao carregar mapa ${selectedMap || MAP_ID}`;
-        document.getElementById("error-title").textContent = mapErrorMessage;
-        document.getElementById("error-message").textContent = `${mapErrorMessage}: ${message}`;
-        setGameState(GAME_STATES.ERRO);
-        document.getElementById("error-function").textContent = involvedFunction || "inicialização";
-        document.getElementById("error-stage").textContent = stage || initializationStage;
-        document.getElementById("error-overlay").classList.add("open");
-    }
-
-    window.onerror = function (message, source, line, column, error) {
-        showFatalError(error || `${message} (${line}:${column})`, "window.onerror", initializationStage);
-        return false;
-    };
-    window.addEventListener("unhandledrejection", (event) => {
-        showFatalError(event.reason || "Promise rejeitada sem motivo informado", "unhandledrejection", initializationStage);
-    });
-
-    function clearCurrentMap() {
-        initializationStage = "limpar mapa anterior";
-        if (currentGameMap && typeof currentGameMap.dispose === "function") currentGameMap.dispose();
-        currentGameMap = null;
-        if (mapGroup) {
-            while (mapGroup.children.length) mapGroup.remove(mapGroup.children[0]);
-        }
-        colliders.length = 0;
-        wallObjects.length = 0;
-        if (countdownTimer) window.clearTimeout(countdownTimer);
-        countdownTimer = null;
-        controlsEnabled = false;
-        window.controlsEnabled = false;
-    }
-
-    async function loadSelectedMap() {
-        const mapId = selectedMap;
-        const loadingMessage = `Carregando mapa ${mapId}...`;
-        console.info(loadingMessage);
-        showToast(loadingMessage);
-        clearCurrentMap();
-
-        const mapDefinition = MAPS[mapId];
-        if (!mapDefinition || typeof mapDefinition.build !== "function") {
-            const error = new Error(`Mapa não encontrado: ${mapId}`);
-            console.error(`Erro ao carregar mapa ${mapId}`, error);
-            showToast(`Erro ao carregar mapa ${mapId}`);
-            throw error;
-        }
-
-        try {
-            initializationStage = `construir mapa com ${mapDefinition.build.name || "build"}`;
-            const builtMap = await Promise.resolve(mapDefinition.build({
-                THREE, scene, mapGroup, colliders, wallObjects, gameMode: currentMatchOptions?.mode,
-            }));
-            initializationStage = "validar mapa e chão na scene";
-            validateDust2Map(builtMap);
-            if (!scene.children.includes(mapGroup) || builtMap.group !== mapGroup) {
-                throw new Error("O mapa criado não foi adicionado à scene.");
-            }
-            currentGameMap = builtMap;
-            window.currentGameMap = builtMap;
-            console.info(`Mapa ${mapId} carregado`);
-            showToast(`Mapa ${mapId} carregado`);
-            return { success: true, map: builtMap };
-        } catch (error) {
-            clearCurrentMap();
-            console.error(`Erro ao carregar mapa ${mapId}`, error);
-            showToast(`Erro ao carregar mapa ${mapId}`);
-            throw error;
-        }
-    }
-
-    function initializeThreeRuntime() {
-        initializationStage = "carregar Three.js";
-        if (window.__threeLoadFailed || typeof window.THREE === "undefined") {
-            throw new Error("Não foi possível carregar o Three.js. Conecte-se à internet e abra o jogo novamente.");
-        }
-        initializationStage = "criar scene";
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87a6b5);
-        scene.fog = new THREE.Fog(0x87a6b5, 70, 155);
-        initializationStage = "criar camera";
-        camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 300);
-        initializationStage = "criar renderer";
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-        renderer.setSize(innerWidth, innerHeight);
-        renderer.domElement.id = "game-canvas";
-        document.getElementById("game-container").prepend(renderer.domElement);
-        initializationStage = "criar arrays globais de colisão";
-        mapGroup = new THREE.Group();
-        mapGroup.name = "map-group";
-        scene.add(mapGroup);
-        window.addEventListener("resize", () => {
-            camera.aspect = innerWidth / innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(innerWidth, innerHeight);
-        });
-        renderer.setAnimationLoop(() => renderer.render(scene, camera));
-        initializationStage = "iniciar menu";
-    }
-
-    try {
-        initializeThreeRuntime();
-    } catch (error) {
-        showFatalError(error, "initializeThreeRuntime", initializationStage);
-    }
-
-    const backdrops = [...document.querySelectorAll(".modal-backdrop")];
+    function setGameState(state) { gameState = state; window.gameState = state; window.dispatchEvent(new CustomEvent("game-state-change", {detail:{state}})); }
     const toast = document.getElementById("toast");
-    const closeWindows = () => backdrops.forEach((modal) => modal.classList.remove("open"));
-    const showToast = (message) => { toast.textContent = message; toast.classList.add("show"); window.setTimeout(() => toast.classList.remove("show"), 2200); };
+    function showToast(message) { toast.textContent=message; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1800); }
+    function closeWindows() { document.querySelectorAll(".modal-backdrop").forEach(m=>m.classList.remove("open")); }
+    function addCollider(mesh) { mesh.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(mesh); colliders.push(box); wallObjects.push(mesh); return mesh; }
 
-    document.querySelectorAll("[data-open]").forEach((button) => button.addEventListener("click", () => {
-        closeWindows();
-        const modal = document.getElementById(button.dataset.open);
-        modal.classList.add("open");
-        modal.querySelector("button, select, input")?.focus();
-    }));
-    document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", closeWindows));
-    backdrops.forEach((modal) => modal.addEventListener("click", (event) => { if (event.target === modal) closeWindows(); }));
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeWindows(); });
-
-    document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => {
-        document.querySelectorAll("[data-tab]").forEach((tab) => tab.classList.toggle("active", tab === button));
-        document.querySelectorAll("[data-page]").forEach((page) => page.classList.toggle("active", page.dataset.page === button.dataset.tab));
-    }));
-
-    const modeSelect = document.getElementById("game-mode");
-    const updateModeFields = () => document.querySelectorAll("[data-mode-fields]").forEach((group) => group.classList.toggle("active", group.dataset.modeFields.split(" ").includes(modeSelect.value)));
-    modeSelect.addEventListener("change", updateModeFields);
-    function saveMatchOptions() {
-        const options = {
-            mode: modeSelect.value,
-            map: document.getElementById("map").value,
-            roundTime: document.getElementById("round-time").value,
-            bestOf: document.getElementById("best-of").value,
-            matchTime: document.getElementById("match-time").value,
-            botCount: Number(document.getElementById("bot-count").value),
-            difficulty: document.getElementById("difficulty").value,
+    function buildDust2Map() {
+        if (!scene || !mapGroup) throw new Error("buildDust2Map: cena indisponível");
+        const map = mapGroup; map.name = MAP_ID;
+        const materials = {
+            sand:new THREE.MeshStandardMaterial({color:0xc9a76c,roughness:1}), wall:new THREE.MeshStandardMaterial({color:0xa98758,roughness:1}),
+            stone:new THREE.MeshStandardMaterial({color:0x796b59,roughness:1}), crate:new THREE.MeshStandardMaterial({color:0x6d4b2d,roughness:1}),
+            siteA:new THREE.MeshStandardMaterial({color:0xb85c45,roughness:1}), siteB:new THREE.MeshStandardMaterial({color:0xb99143,roughness:1}), dark:new THREE.MeshStandardMaterial({color:0x51483d,roughness:1})
         };
-        localStorage.setItem("cs16plh-match-options", JSON.stringify(options));
-        currentMatchOptions = options;
-        window.currentMatchOptions = options;
+        function meshBox(name,x,y,z,w,h,d,mat,solid=true) { const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.name=name; m.position.set(x,y+h/2,z); map.add(m); if(solid)addCollider(m); return m; }
+        function createFloor(name,x,z,w,d,y=0,mat=materials.sand) { return meshBox(name,x,y-.15,z,w,.3,d,mat,false); }
+        function createWall(name,x,z,w,d,h=5,y=0,mat=materials.wall) { return meshBox(name,x,y,z,w,h,d,mat,true); }
+        function createCrate(name,x,z,size=2.5,y=0) { return meshBox(name,x,y,z,size,size,size,materials.crate,true); }
+        function createRamp(name,x,z,w,d,height,rotation=0) { const m=meshBox(name,x,0,z,w,.35,d,materials.stone,true); m.rotation.x=rotation || -Math.atan2(height,d); m.position.y=height/2; colliders[colliders.length-1].setFromObject(m); return m; }
+        function createStairs(name,x,z,w,depth,height,steps=5,axis="z") { for(let i=0;i<steps;i++){ const h=height*(i+1)/steps, d=depth/steps; createWall(`${name}-${i}`,x+(axis==="x"?(i-(steps-1)/2)*d:0),z+(axis==="z"?(i-(steps-1)/2)*d:0),axis==="x"?d:w,axis==="z"?d:w,h); } }
+        function createDoorway(name,x,z,w,d,h=5,gap=3,axis="x") { const side=(axis==="x"?w:d-gap)/2; if(axis==="x"){createWall(name+"-l",x-(gap+side)/2,z,side,d,h);createWall(name+"-r",x+(gap+side)/2,z,side,d,h);}else{createWall(name+"-l",x,z-(gap+side)/2,w,side,h);createWall(name+"-r",x,z+(gap+side)/2,w,side,h);} }
+        Object.assign(window,{createFloor,createWall,createCrate,createRamp,createStairs,createDoorway});
+        createFloor("dust2-ground",0,0,120,120);
+        createFloor("bombsite-a",-37,-34,18,18,.02,materials.siteA); createFloor("bombsite-b",38,-30,18,18,.02,materials.siteB);
+        // Limites externos e acessos internos: todos os percursos permanecem conectados pelo Mid.
+        createWall("north-limit",0,-60,120,1,7); createWall("south-limit",0,60,120,1,7); createWall("west-limit",-60,0,1,120,7); createWall("east-limit",60,0,1,120,7);
+        createWall("long-a-west",-53,-18,2,54); createWall("long-a-east",-43,-2,2,32); createDoorway("long-a-gate",-48,10,12,2,5,4,"x");
+        createWall("a-platform-north",-34,-44,25,2); createWall("a-platform-east",-24,-36,2,18); createRamp("a-ramp",-29,-22,9,12,2.4);
+        createWall("mid-west",-19,9,2,43); createWall("mid-east",10,11,2,35); createDoorway("mid-doors",-4,-10,30,2,5,5,"x");
+        createWall("short-a-wall",-29,-5,20,2); createStairs("short-a-stairs",-27,-12,8,9,2.5,6,"z");
+        createWall("upper-tunnel-north",31,-45,32,2); createWall("upper-tunnel-south",31,-35,24,2); createDoorway("b-entrance",20,-40,2,12,5,4,"z");
+        createWall("lower-tunnel-north",29,-6,31,2); createWall("lower-tunnel-south",30,5,40,2); createDoorway("lower-tunnel-exit",12,0,2,12,5,4,"z");
+        createWall("b-site-east",50,-28,2,28); createWall("b-site-south",39,-16,24,2); createRamp("b-ramp",27,-25,10,10,1.8);
+        createWall("ct-corridor",-5,39,47,2); createDoorway("ct-mid-door",18,30,2,20,5,5,"z");
+        [[-40,-34],[-34,-39],[-30,-31],[38,-30],[44,-34],[34,-25],[0,15],[5,20],[27,18],[31,22],[24,-40],[39,-40]].forEach((p,i)=>createCrate("crate-"+i,p[0],p[1],i%3===0?3.2:2.5));
+        const spawns={
+            ct:[[-12,49,0],[-8,50,0],[-4,49,0],[0,50,0],[4,49,0]],
+            tr:[[38,-52,Math.PI],[43,-52,Math.PI],[48,-51,Math.PI],[39,-48,Math.PI],[50,-47,Math.PI]],
+            dm:[[-50,-50,0],[-37,-28,1],[40,-27,3],[0,26,0],[-8,9,2],[25,12,3],[50,10,2],[-45,25,1],[12,-27,0],[31,45,3]]
+        };
+        const normalized={}; Object.entries(spawns).forEach(([k,list])=>normalized[k]=list.map(([x,z,yaw])=>({x,y:PLAYER_HEIGHT,z,yaw})));
+        map.add(new THREE.HemisphereLight(0xffe5b5,0x665748,1.6)); const sun=new THREE.DirectionalLight(0xffd79c,1.4); sun.position.set(-30,55,25); map.add(sun);
+        map.userData.materials=materials;
+        currentGameMap={id:MAP_ID,group:map,spawns:normalized,bounds:BOUNDS}; return currentGameMap;
     }
 
-    function validateDust2Map(builtMap) {
-        if (!mapGroup) throw new Error("mapGroup não existe.");
-        if (mapGroup.children.length === 0) throw new Error("mapGroup não contém objetos.");
-        if (!builtMap?.floor || scene.getObjectById(builtMap.floor.id) !== builtMap.floor) {
-            throw new Error("O chão não foi adicionado à scene.");
-        }
-        const spawn = builtMap.spawn;
-        if (!spawn || ![spawn.x, spawn.y, spawn.z, spawn.yaw].every(Number.isFinite)
-            || spawn.x <= BOUNDS.minX || spawn.x >= BOUNDS.maxX
-            || spawn.z <= BOUNDS.minZ || spawn.z >= BOUNDS.maxZ || spawn.y < PLAYER_HEIGHT) {
-            throw new Error("O spawn do jogador é inválido.");
-        }
-        return spawn;
-    }
+    function clearCurrentMap() { controlsEnabled=false; colliders.length=0; wallObjects.length=0; if(mapGroup){mapGroup.traverse(o=>{if(o.isMesh){o.geometry.dispose(); if(o.material&&!Object.values(mapGroup.userData.materials||{}).includes(o.material))o.material.dispose();}}); while(mapGroup.children.length)mapGroup.remove(mapGroup.children[0]); mapGroup.userData={};} currentGameMap=null; }
+    function safeSpawn() { const mode=currentMatchOptions.mode; const team=currentMatchOptions.team; const list=mode==="dm"?currentGameMap.spawns.dm:currentGameMap.spawns[team]; return list[Math.floor(Math.random()*list.length)]; }
+    function collidesAt(x,y,z) { const box=new THREE.Box3(new THREE.Vector3(x-PLAYER_RADIUS,y-PLAYER_HEIGHT,z-PLAYER_RADIUS),new THREE.Vector3(x+PLAYER_RADIUS,y-.1,z+PLAYER_RADIUS)); return colliders.some(c=>c.intersectsBox(box)); }
+    function placePlayer() { const s=safeSpawn(); if(collidesAt(s.x,s.y,s.z)) throw new Error("Spawn selecionado está dentro de um objeto"); player.position.set(s.x,s.y,s.z); player.velocity.set(0,0,0); player.yaw=s.yaw; player.pitch=0; player.grounded=true; updateCamera(); window.player=player; }
+    function updateCamera() { camera.position.copy(player.position); camera.rotation.set(player.pitch,player.yaw,0,"YXZ"); }
+    function updateHUD() { document.getElementById("health").textContent=`+ ${player.health}`; document.getElementById("match-info").textContent=`DE_DUST2 • ${currentMatchOptions.mode.toUpperCase()}`; document.getElementById("hud").classList.add("visible"); }
+    function releaseControls() { controlsEnabled=true; window.controlsEnabled=true; renderer.domElement.tabIndex=0; document.getElementById("touch-controls").classList.add("playing"); }
+    function openPauseMenu() { if(gameState!==GAME_STATES.JOGANDO)return; controlsEnabled=false; document.exitPointerLock?.(); document.getElementById("menu-overlay").hidden=false; showToast("Jogo pausado — feche o menu para continuar"); }
+    function resumeMatch() { if(gameState===GAME_STATES.JOGANDO){document.getElementById("menu-overlay").hidden=true;controlsEnabled=true;} }
 
-    function releaseControls() {
-        controlsEnabled = true;
-        renderer.domElement.tabIndex = 0;
-        renderer.domElement.focus();
-        window.controlsEnabled = true;
-    }
-
-    function beginMatch() {
-        setGameState(GAME_STATES.CONTAGEM_REGRESSIVA);
-        countdownTimer = window.setTimeout(() => {
-            countdownTimer = null;
-            setGameState(GAME_STATES.JOGANDO);
-        }, 3000);
-    }
-
-    document.getElementById("game-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const startButton = event.currentTarget.querySelector('[type="submit"]');
-        startButton.disabled = true;
-        startButton.textContent = "Iniciando partida…";
+    async function startMatch() {
+        let loading=document.getElementById("loading-overlay"); const menu=document.getElementById("menu-overlay"); if(!loading){loading=document.createElement("div");loading.id="loading-overlay";loading.innerHTML="<span>Carregando de_dust2…</span>";document.getElementById("game-container").append(loading);}
         try {
-            if (!scene || !camera || !renderer || !mapGroup) throw new Error("O motor gráfico não foi inicializado.");
-
-            initializationStage = "salvar opções escolhidas";
-            saveMatchOptions();
-            selectedMap = currentMatchOptions.map;
-            window.selectedMap = selectedMap;
-            initializationStage = "esconder menu";
-            closeWindows();
-            document.getElementById("menu-overlay").hidden = true;
-            setGameState(GAME_STATES.CARREGANDO);
-
-            const result = await loadSelectedMap();
-            const builtMap = result.map;
-            const spawn = validateDust2Map(builtMap);
-
-            initializationStage = "definir spawn do jogador";
-            window.playerSpawn = { ...spawn };
-            initializationStage = "posicionar câmera no spawn";
-            camera.position.set(spawn.x, spawn.y, spawn.z);
-            camera.rotation.set(0, spawn.yaw, 0, "YXZ");
-            initializationStage = "liberar controles";
-            releaseControls();
-
-            initializationStage = "iniciar partida";
-            beginMatch();
-            window.dispatchEvent(new CustomEvent("game-map-ready", { detail: { id: selectedMap, map: builtMap } }));
-        } catch (error) {
-            document.getElementById("menu-overlay").hidden = false;
-            showFatalError(error, "loadSelectedMap", initializationStage);
-        } finally {
-            startButton.disabled = false;
-            startButton.textContent = "Iniciar partida";
+            setGameState(GAME_STATES.CARREGANDO); loading.classList.add("open"); closeWindows(); menu.hidden=true;
+            await new Promise(r=>setTimeout(r,700));
+            clearCurrentMap(); buildDust2Map();
+            if(!mapGroup || mapGroup.children.length===0) throw new Error("Erro ao carregar o mapa de_dust2");
+            placePlayer(); camera.fov=Number(document.getElementById("camera-fov").value); camera.updateProjectionMatrix(); updateCamera(); updateHUD(); releaseControls();
+            setGameState(GAME_STATES.JOGANDO); loading.classList.remove("open"); loading.remove();
+            lastFrame=performance.now(); window.dispatchEvent(new CustomEvent("game-map-ready",{detail:{map:currentGameMap}}));
+        } catch(error) {
+            loading.classList.remove("open"); clearCurrentMap(); document.getElementById("hud").classList.remove("visible"); menu.hidden=false; setGameState(GAME_STATES.ERRO);
+            document.getElementById("error-title").textContent="Erro ao carregar o mapa de_dust2"; document.getElementById("error-message").textContent=error.message; document.getElementById("error-function").textContent="startMatch"; document.getElementById("error-stage").textContent="criar mapa e jogador"; document.getElementById("error-overlay").classList.add("open"); console.error(error);
         }
-    });
+    }
+    window.startMatch=startMatch; window.buildDust2Map=buildDust2Map; window.clearCurrentMap=clearCurrentMap;
 
-    document.getElementById("error-back").addEventListener("click", () => {
-        document.getElementById("error-overlay").classList.remove("open");
-        document.getElementById("menu-overlay").hidden = false;
-        closeWindows();
-        setGameState(GAME_STATES.MENU);
-    });
+    function jump(){if(controlsEnabled&&player.grounded){player.velocity.y=player.jumpSpeed;player.grounded=false;}}
+    function updatePlayer(dt) {
+        if(!controlsEnabled||gameState!==GAME_STATES.JOGANDO)return;
+        let forward=(keys.KeyW?1:0)-(keys.KeyS?1:0)-touchMove.z, side=(keys.KeyD?1:0)-(keys.KeyA?1:0)+touchMove.x; const len=Math.hypot(forward,side)||1; forward/=len;side/=len;
+        const sin=Math.sin(player.yaw),cos=Math.cos(player.yaw), dx=(side*cos-forward*sin)*player.speed*dt, dz=(forward*cos+side*sin)*player.speed*dt;
+        if(!collidesAt(player.position.x+dx,player.position.y,player.position.z))player.position.x+=dx;
+        if(!collidesAt(player.position.x,player.position.y,player.position.z+dz))player.position.z+=dz;
+        player.velocity.y-=player.gravity*dt; const nextY=player.position.y+player.velocity.y*dt;
+        if(nextY<=PLAYER_HEIGHT){player.position.y=PLAYER_HEIGHT;player.velocity.y=0;player.grounded=true;}else player.position.y=nextY;
+        updateCamera();
+    }
+    function animate(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;updatePlayer(dt);renderer.render(scene,camera);requestAnimationFrame(animate);}
+    function initializeThreeRuntime(){if(typeof THREE==="undefined")throw new Error("Three.js não pôde ser carregado");scene=new THREE.Scene();scene.background=new THREE.Color(0x8bb0c1);scene.fog=new THREE.Fog(0x8bb0c1,85,165);camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,250);renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.domElement.id="game-canvas";document.getElementById("game-container").prepend(renderer.domElement);mapGroup=new THREE.Group();scene.add(mapGroup);player.position=new THREE.Vector3(0,PLAYER_HEIGHT,0);player.velocity=new THREE.Vector3();addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});requestAnimationFrame(animate);}
 
-    const bindings = [["Avançar","W"],["Recuar","S"],["Mover à esquerda","A"],["Mover à direita","D"],["Pular","Espaço"],["Agachar","Ctrl"],["Atirar","Mouse 1"],["Mira secundária","Mouse 2"],["Recarregar","R"],["Usar / interagir","E"],["Trocar arma","Q"],["Placar","Tab"]];
-    document.getElementById("key-bindings").innerHTML = bindings.map(([name,key]) => `<label class="key-row"><span>${name}</span><input class="key-bind" type="text" value="${key}" aria-label="Tecla para ${name}"></label>`).join("");
-
-    const touch = [["Posição geral",0,100,50,"%"],["Tamanho",50,150,100,"%"],["Transparência",10,100,80,"%"],["Sensibilidade do analógico",1,10,5,""],["Posição do botão de tiro",0,100,80,"%"],["Posição do botão de pulo",0,100,70,"%"],["Posição do botão de recarga",0,100,60,"%"],["Posição do botão de trocar arma",0,100,50,"%"],["Posição do botão de interação",0,100,40,"%"]];
-    const audio = ["Volume geral","Música","Efeitos sonoros","Passos","Tiros","Interface"].map((name) => [name,0,100,name === "Música" ? 35 : 75,"%"]);
-    const rangeMarkup = ([name,min,max,value,suffix], index, prefix) => `<div class="field"><label for="${prefix}-${index}">${name}</label><div class="range-line"><input id="${prefix}-${index}" type="range" min="${min}" max="${max}" value="${value}"><output>${value}${suffix}</output></div></div>`;
-    document.getElementById("touch-settings").innerHTML = touch.map((item,index) => rangeMarkup(item,index,"touch")).join("");
-    document.getElementById("audio-settings").innerHTML = audio.map((item,index) => rangeMarkup(item,index,"audio")).join("");
-    document.querySelectorAll('input[type="range"]').forEach((input) => input.addEventListener("input", () => { const output = input.parentElement.querySelector("output"); if (output) output.value = input.value + (output.textContent.includes("%") ? "%" : ""); }));
-
-    document.getElementById("exit-button").addEventListener("click", () => { window.close(); window.setTimeout(() => { if (!window.closed) showToast("O navegador impediu o fechamento automático desta janela."); }, 120); });
+    document.querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>{closeWindows();document.getElementById(b.dataset.open).classList.add("open")}));
+    document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{closeWindows();resumeMatch()}));
+    document.querySelectorAll(".modal-backdrop").forEach(m=>m.addEventListener("click",e=>{if(e.target===m){closeWindows();resumeMatch()}}));
+    document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("[data-tab]").forEach(t=>t.classList.toggle("active",t===b));document.querySelectorAll("[data-page]").forEach(p=>p.classList.toggle("active",p.dataset.page===b.dataset.tab))}));
+    const modeSelect=document.getElementById("game-mode"); modeSelect.addEventListener("change",()=>document.querySelectorAll("[data-mode-fields]").forEach(g=>g.classList.toggle("active",g.dataset.modeFields.split(" ").includes(modeSelect.value))));
+    function saveMatchOptions(){currentMatchOptions={mode:modeSelect.value,map:document.getElementById("map").value,team:document.getElementById("team").value,roundTime:document.getElementById("round-time").value,bestOf:document.getElementById("best-of").value,matchTime:document.getElementById("match-time").value,botCount:+document.getElementById("bot-count").value,difficulty:document.getElementById("difficulty").value};localStorage.setItem("cs16plh-match-options",JSON.stringify(currentMatchOptions));selectedMap=currentMatchOptions.map;}
+    document.getElementById("game-form").addEventListener("submit",async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type="submit"]');b.disabled=true;b.textContent="Iniciando partida…";saveMatchOptions();await startMatch();b.disabled=false;b.textContent="Iniciar partida";});
+    addEventListener("keydown",e=>{keys[e.code]=true;if(e.code==="Space"){e.preventDefault();jump()}if(e.key==="Escape")openPauseMenu()}); addEventListener("keyup",e=>keys[e.code]=false);
+    const rendererPointer=()=>{if(controlsEnabled&&document.pointerLockElement!==renderer.domElement)renderer.domElement.requestPointerLock?.()};
+    addEventListener("mousemove",e=>{if(controlsEnabled&&document.pointerLockElement===renderer.domElement){player.yaw-=e.movementX*.0023;player.pitch=Math.max(-1.48,Math.min(1.48,player.pitch-e.movementY*.0023))}});
+    document.getElementById("error-back").addEventListener("click",()=>{document.getElementById("error-overlay").classList.remove("open");document.getElementById("menu-overlay").hidden=false;setGameState(GAME_STATES.MENU)});
+    const bindings=[["Avançar","W"],["Recuar","S"],["Mover à esquerda","A"],["Mover à direita","D"],["Pular","Espaço"],["Agachar","Ctrl"],["Atirar","Mouse 1"],["Mira secundária","Mouse 2"],["Recarregar","R"],["Usar / interagir","E"],["Trocar arma","Q"],["Placar","Tab"]];document.getElementById("key-bindings").innerHTML=bindings.map(([n,k])=>`<label class="key-row"><span>${n}</span><input class="key-bind" value="${k}" aria-label="Tecla para ${n}"></label>`).join("");
+    const settings=[["Posição geral",0,100,50,"%"],["Tamanho",50,150,100,"%"],["Transparência",10,100,80,"%"],["Sensibilidade",1,10,5,""]], audio=["Volume geral","Música","Efeitos sonoros","Passos","Tiros","Interface"].map(n=>[n,0,100,75,"%"]);const ranges=(a,p)=>a.map(([n,min,max,v,s],i)=>`<div class="field"><label>${n}</label><div class="range-line"><input id="${p}-${i}" type="range" min="${min}" max="${max}" value="${v}"><output>${v}${s}</output></div></div>`).join("");document.getElementById("touch-settings").innerHTML=ranges(settings,"touch");document.getElementById("audio-settings").innerHTML=ranges(audio,"audio");document.querySelectorAll('input[type="range"]').forEach(i=>i.addEventListener("input",()=>{const o=i.parentElement.querySelector("output");if(o)o.value=i.value+(o.textContent.includes("%")?"%":"")}));
+    if(matchMedia("(pointer: coarse)").matches)document.body.classList.add("touch-device");
+    const joy=document.getElementById("joystick"),knob=document.getElementById("joystick-knob");function joyMove(e){const r=joy.getBoundingClientRect(),t=e.touches[0],x=t.clientX-(r.left+r.width/2),y=t.clientY-(r.top+r.height/2),l=Math.min(42,Math.hypot(x,y)),a=Math.atan2(y,x);touchMove.x=Math.cos(a)*l/42;touchMove.z=Math.sin(a)*l/42;knob.style.transform=`translate(${touchMove.x*40}px,${touchMove.z*40}px)`}joy.addEventListener("touchstart",joyMove,{passive:false});joy.addEventListener("touchmove",joyMove,{passive:false});joy.addEventListener("touchend",()=>{touchMove.x=touchMove.z=0;knob.style.transform=""});document.getElementById("touch-jump").addEventListener("touchstart",e=>{e.preventDefault();jump()});document.getElementById("touch-fire").addEventListener("touchstart",e=>{e.preventDefault();showToast("Disparo")});document.getElementById("touch-menu").addEventListener("touchstart",e=>{e.preventDefault();openPauseMenu()});let lookTouch;document.getElementById("look-area").addEventListener("touchstart",e=>lookTouch=e.touches[0],{passive:false});document.getElementById("look-area").addEventListener("touchmove",e=>{e.preventDefault();const t=e.touches[0];if(lookTouch){player.yaw-=(t.clientX-lookTouch.clientX)*.006;player.pitch=Math.max(-1.48,Math.min(1.48,player.pitch-(t.clientY-lookTouch.clientY)*.006))}lookTouch=t},{passive:false});
+    document.getElementById("exit-button").addEventListener("click",()=>showToast("Use os controles do navegador para fechar."));
+    try{initializeThreeRuntime();renderer.domElement.addEventListener("click",rendererPointer);}catch(error){document.getElementById("error-overlay").classList.add("open");document.getElementById("error-message").textContent=error.message;console.error(error)}
 </script>
 </body>
 </html>
