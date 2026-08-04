@@ -185,9 +185,10 @@
                             <div class="section"><h3>Celular — botões touch</h3><div class="form-grid" id="touch-settings"></div></div>
                         </section>
                         <section class="tab-page" data-page="graphics"><div class="section"><h3>Gráficos</h3><div class="form-grid">
-                            <div class="field"><label for="shadows">Sombras</label><select id="shadows"><option>Desligadas</option><option>Baixas</option><option selected>Altas</option></select></div>
+                            <div class="field"><label for="shadows">Sombras</label><select id="shadows"><option>Desligadas</option><option selected>Ligadas</option></select></div>
                             <div class="field"><label for="quality">Qualidade gráfica</label><select id="quality"><option>Baixa</option><option selected>Média</option><option>Alta</option></select></div>
-                            <div class="field"><label for="camera-fov">Campo de visão (FOV)</label><div class="range-line"><input id="camera-fov" type="range" min="60" max="100" value="75"><output>75°</output></div></div>
+                            <div class="field"><label for="camera-fov">Campo de visão (FOV)</label><div class="range-line"><input id="camera-fov" type="range" min="60" max="110" value="75"><output>75°</output></div></div>
+                            <div class="field"><label for="map-time-of-day">Horário do mapa</label><select id="map-time-of-day"><option value="midday">Meio-dia</option><option value="sunset">Pôr do sol</option><option value="night">Noite</option></select></div>
                             <div class="field full"><label for="render-distance">Distância de renderização</label><div class="range-line"><input id="render-distance" type="range" min="25" max="100" value="75"><output>75%</output></div></div>
                         </div></div></section>
                         <section class="tab-page" data-page="audio"><div class="section"><h3>Áudio</h3><div class="form-grid" id="audio-settings"></div></div></section>
@@ -212,6 +213,9 @@
     const BOUNDS = Object.freeze({ minX: -60, maxX: 60, minZ: -60, maxZ: 60 });
     const GAME_STATES = Object.freeze({ MENU:"MENU", CARREGANDO:"CARREGANDO", JOGANDO:"JOGANDO", ERRO:"ERRO" });
     let scene, camera, renderer, mapGroup, currentGameMap, currentMatchOptions, selectedMap = MAP_ID;
+    let currentFov = 75, graphicsQuality = "Média", shadowsEnabled = true, currentTimeOfDay = "midday";
+    let ambientLight, sunLight, firstPersonGroup, weaponGroup, leftArm, rightArm, activeWeapon = "glock", fpBobTime = 0, recoilKick = 0, reloadMotion = 0, switchMotion = 0;
+    const shadowCasters = new Set(), shadowReceivers = new Set(), nightLights = [];
     let gameState = GAME_STATES.MENU, controlsEnabled = false, lastFrame = performance.now();
     const colliders = [], walkableSurfaces = [], wallObjects = [], keys = Object.create(null);
     const player = { position:null, velocity:null, height:PLAYER_HEIGHT, radius:PLAYER_RADIUS, speed:8.5, gravity:25, jumpSpeed:9, grounded:true, yaw:0, pitch:0, health:100 };
@@ -222,6 +226,7 @@
     function showToast(message) { toast.textContent=message; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1800); }
     function closeWindows() { document.querySelectorAll(".modal-backdrop").forEach(m=>m.classList.remove("open")); }
     function addCollider(mesh) { mesh.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(mesh); colliders.push(box); wallObjects.push(mesh); return mesh; }
+    function markShadowObject(mesh,{cast=true,receive=true}={}){ if(!mesh)return mesh; if(cast)shadowCasters.add(mesh); if(receive)shadowReceivers.add(mesh); mesh.castShadow=cast&&shadowsEnabled; mesh.receiveShadow=receive&&shadowsEnabled; return mesh; }
 
     function buildDust2Map() {
         if (!scene || !mapGroup) throw new Error("buildDust2Map: cena indisponível");
@@ -232,15 +237,15 @@
             metal:new THREE.MeshStandardMaterial({color:0x34383a,roughness:.9}), dark:new THREE.MeshStandardMaterial({color:0x51483d,roughness:1}),
             siteA:new THREE.MeshStandardMaterial({color:0xb85c45,roughness:1}), siteB:new THREE.MeshStandardMaterial({color:0xb99143,roughness:1})
         };
-        function meshBox(name,x,y,z,w,h,d,mat,solid=true) { const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); mesh.name=name; mesh.position.set(x,y+h/2,z); map.add(mesh); if(solid)addCollider(mesh); return mesh; }
+        function meshBox(name,x,y,z,w,h,d,mat,solid=true) { const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); mesh.name=name; mesh.position.set(x,y+h/2,z); map.add(mesh); markShadowObject(mesh,{cast:solid||h>1,receive:true}); if(solid)addCollider(mesh); return mesh; }
         function addWalkableRect(x,z,w,d,heightAt) { walkableSurfaces.push({x,z,halfW:w/2,halfD:d/2,heightAt}); }
-        function createFloor(name,x,z,w,d,y=0,mat=materials.sand) { const floor=meshBox(name,x,y-.15,z,w,.3,d,mat,false); addWalkableRect(x,z,w,d,()=>y); return floor; }
+        function createFloor(name,x,z,w,d,y=0,mat=materials.sand) { const floor=meshBox(name,x,y-.15,z,w,.3,d,mat,false); markShadowObject(floor,{cast:false,receive:true}); addWalkableRect(x,z,w,d,()=>y); return floor; }
         function createWall(name,x,z,w,d,h=5,y=0,mat=materials.wall) { return meshBox(name,x,y,z,w,h,d,mat,true); }
         function createCrate(name,x,z,size=2.5,y=0) { return meshBox(name,x,y,z,size,size,size,materials.wood,true); }
-        function createRamp(name,x,z,w,d,height,axis="z",direction=1) { const along=axis==="x"?w:d,across=axis==="x"?d:w; const ramp=new THREE.Mesh(new THREE.BoxGeometry(across,.16,along),materials.stone); ramp.name=name; ramp.rotation.order="YXZ"; ramp.rotation.y=axis==="x"?Math.PI/2:0; ramp.rotation.x=-direction*Math.atan2(height,along); ramp.position.set(x,height/2-.08,z); map.add(ramp); addWalkableRect(x,z,w,d,(px,pz)=>{const offset=axis==="x"?px-x:pz-z;return height*Math.max(0,Math.min(1,.5+direction*offset/along));}); return ramp; }
+        function createRamp(name,x,z,w,d,height,axis="z",direction=1) { const along=axis==="x"?w:d,across=axis==="x"?d:w; const ramp=new THREE.Mesh(new THREE.BoxGeometry(across,.16,along),materials.stone); ramp.name=name; ramp.rotation.order="YXZ"; ramp.rotation.y=axis==="x"?Math.PI/2:0; ramp.rotation.x=-direction*Math.atan2(height,along); ramp.position.set(x,height/2-.08,z); map.add(ramp); markShadowObject(ramp,{cast:false,receive:true}); addWalkableRect(x,z,w,d,(px,pz)=>{const offset=axis==="x"?px-x:pz-z;return height*Math.max(0,Math.min(1,.5+direction*offset/along));}); return ramp; }
         function createStairs(name,x,z,w,depth,height,steps=6,axis="z",direction=1) { const stepDepth=depth/steps; for(let i=0;i<steps;i++){ const level=direction>0?i+1:steps-i; const sx=x+(axis==="x"?(i-(steps-1)/2)*stepDepth:0), sz=z+(axis==="z"?(i-(steps-1)/2)*stepDepth:0); meshBox(`${name}-${i}`,sx,0,sz,axis==="x"?stepDepth:w,height*level/steps,axis==="z"?stepDepth:w,materials.stone,false); addWalkableRect(sx,sz,axis==="x"?stepDepth:w,axis==="z"?stepDepth:w,()=>height*level/steps); } }
         function createDoorway(name,x,z,w,d,h=5,gap=4,axis="x") { const span=axis==="x"?w:d, side=(span-gap)/2; if(axis==="x"){createWall(name+"-l",x-(gap+side)/2,z,side,d,h);createWall(name+"-r",x+(gap+side)/2,z,side,d,h);}else{createWall(name+"-l",x,z-(gap+side)/2,w,side,h);createWall(name+"-r",x,z+(gap+side)/2,w,side,h);} meshBox(name+"-lintel",x,h-1,z,w,1,d,materials.stone,true); }
-        function createPillar(name,x,z,radius=1,height=5,mat=materials.stone) { const pillar=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,height,8),mat); pillar.name=name; pillar.position.set(x,height/2,z); map.add(pillar); addCollider(pillar); return pillar; }
+        function createPillar(name,x,z,radius=1,height=5,mat=materials.stone) { const pillar=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,height,8),mat); pillar.name=name; pillar.position.set(x,height/2,z); map.add(pillar); markShadowObject(pillar,{cast:true,receive:true}); addCollider(pillar); return pillar; }
         function createDoubleDoors(name,x,z,axis="x") { const vertical=axis==="z"; [-1,1].forEach((side,i)=>meshBox(`${name}-${i}`,x+(vertical?0:side*2.25),0,z+(vertical?side*2.25:0),vertical?.35:2.2,4.2,vertical?2.2:.35,materials.metal,true)); }
         Object.assign(window,{createFloor,createWall,createCrate,createRamp,createStairs,createDoorway,createPillar});
 
@@ -294,7 +299,7 @@
         };
         const normalized={}; Object.entries(spawns).forEach(([k,list])=>normalized[k]=list.map(([x,z,yaw])=>({x,y:PLAYER_HEIGHT,z,yaw})));
         map.userData.materials=materials; map.userData.bombsites={a:{x:-34,y:.02,z:-31},b:{x:42,y:.02,z:-31}};
-        currentGameMap={id:MAP_ID,group:map,spawns:normalized,bombsites:map.userData.bombsites,bounds:BOUNDS}; return currentGameMap;
+        currentGameMap={id:MAP_ID,group:map,spawns:normalized,bombsites:map.userData.bombsites,bounds:BOUNDS}; applyGraphicsSettings(); return currentGameMap;
     }
 
     // Registro interno de mapas. O menu guarda somente esta chave; nenhum arquivo e carregado.
@@ -310,6 +315,8 @@
         colliders.length=0;
         walkableSurfaces.length=0;
         wallObjects.length=0;
+        shadowCasters.clear();
+        shadowReceivers.clear();
         if(mapGroup){
             const materials=new Set();
             mapGroup.traverse(object=>{
@@ -349,7 +356,7 @@
             console.log("Mapa criado com sucesso");
             placePlayer();
             console.log("Jogador posicionado");
-            camera.fov=Number(document.getElementById("camera-fov").value); camera.updateProjectionMatrix(); updateCamera(); updateHUD(); releaseControls();
+            applyFov(currentFov); updateCamera(); updateHUD(); releaseControls();
             setGameState(GAME_STATES.JOGANDO); loading.classList.remove("open"); loading.remove();
             console.log("Partida iniciada");
             lastFrame=performance.now(); window.dispatchEvent(new CustomEvent("game-map-ready",{detail:{map:currentGameMap}}));
@@ -359,6 +366,60 @@
         }
     }
     window.startMatch=startMatch; window.buildDust2Map=buildDust2Map; window.clearCurrentMap=clearCurrentMap;
+
+
+    function applyFov(value=currentFov){
+        currentFov=Math.max(60,Math.min(110,Number(value)||75));
+        if(camera){camera.fov=currentFov;camera.updateProjectionMatrix();}
+        const input=document.getElementById("camera-fov"),out=input?.parentElement.querySelector("output");
+        if(input)input.value=String(currentFov); if(out)out.value=`${currentFov}°`;
+        localStorage.setItem("cs16plh-fov",String(currentFov));
+    }
+    function setRenderDistance(percent){
+        const p=Math.max(25,Math.min(100,Number(percent)||75));
+        if(camera){camera.far=90+p*1.9;camera.updateProjectionMatrix();}
+        if(scene?.fog){scene.fog.near=45+p*.45;scene.fog.far=90+p*1.55;}
+        const input=document.getElementById("render-distance"),out=input?.parentElement.querySelector("output");
+        if(input)input.value=String(p); if(out)out.value=`${p}%`;
+    }
+    function applyShadowSettings(){
+        const mobile=matchMedia("(pointer: coarse)").matches;
+        const high=graphicsQuality==="Alta";
+        const enabled=shadowsEnabled && graphicsQuality!=="Baixa";
+        if(renderer){renderer.shadowMap.enabled=enabled;renderer.shadowMap.type=high?THREE.PCFSoftShadowMap:THREE.BasicShadowMap;}
+        if(sunLight){sunLight.castShadow=enabled;sunLight.shadow.mapSize.set(mobile?512:(high?1024:768),mobile?512:(high?1024:768));sunLight.shadow.camera.near=1;sunLight.shadow.camera.far=120;sunLight.shadow.camera.left=-70;sunLight.shadow.camera.right=70;sunLight.shadow.camera.top=70;sunLight.shadow.camera.bottom=-70;}
+        shadowCasters.forEach(o=>o.castShadow=enabled); shadowReceivers.forEach(o=>o.receiveShadow=enabled);
+        firstPersonGroup?.traverse(o=>{if(o.isMesh){o.castShadow=enabled;o.receiveShadow=enabled;}});
+    }
+    function applyGraphicsSettings(){
+        const profiles={"Baixa":{pixel:1,dist:45,particles:.35,hemi:1.25},"Média":{pixel:1.35,dist:70,particles:.65,hemi:1.45},"Alta":{pixel:1.5,dist:100,particles:1,hemi:1.65}};
+        const cfg=profiles[graphicsQuality]||profiles["Média"];
+        renderer?.setPixelRatio(Math.min(devicePixelRatio,cfg.pixel));
+        setRenderDistance(cfg.dist);
+        if(ambientLight)ambientLight.intensity=cfg.hemi;
+        window.particleQuality=cfg.particles;
+        localStorage.setItem("cs16plh-quality",graphicsQuality);
+        applyShadowSettings(); setMapTimeOfDay(currentTimeOfDay);
+    }
+    function setMapTimeOfDay(mode){
+        currentTimeOfDay=mode||"midday"; localStorage.setItem("cs16plh-time-of-day",currentTimeOfDay);
+        const cfg={midday:{bg:0x9fd4ff,fog:0xbddcff,hemi:1.75,sun:0xffffff,int:1.75,pos:[-22,64,18]},sunset:{bg:0xf09a55,fog:0xc98b58,hemi:1.15,sun:0xffb15c,int:1.05,pos:[-58,24,18]},night:{bg:0x07111f,fog:0x101a2c,hemi:.42,sun:0x9fc0ff,int:.38,pos:[-25,35,18]}}[currentTimeOfDay];
+        if(scene){scene.background=new THREE.Color(cfg.bg);scene.fog=new THREE.Fog(cfg.fog,currentTimeOfDay==="night"?35:70,currentTimeOfDay==="night"?125:185);}
+        if(ambientLight){ambientLight.color.set(cfg.fog);ambientLight.groundColor.set(0x4d4438);ambientLight.intensity=cfg.hemi*(graphicsQuality==="Baixa"?.8:1);}
+        if(sunLight){sunLight.color.set(cfg.sun);sunLight.intensity=cfg.int;sunLight.position.set(...cfg.pos);}
+        nightLights.forEach(l=>l.visible=currentTimeOfDay==="night");
+    }
+    function createFirstPersonView(){
+        firstPersonGroup=new THREE.Group(); firstPersonGroup.position.set(.32,-.36,-.78); camera.add(firstPersonGroup);
+        weaponGroup=new THREE.Group(); firstPersonGroup.add(weaponGroup);
+        const skin=new THREE.MeshStandardMaterial({color:0xc78b5f,roughness:.85}), glove=new THREE.MeshStandardMaterial({color:0x171b1e,roughness:.75}), sleeve=new THREE.MeshStandardMaterial({color:0x3d4b39,roughness:.9}), gunMat=new THREE.MeshStandardMaterial({color:0x22282c,roughness:.65,metalness:.25});
+        const arm=(side)=>{const g=new THREE.Group(); const x=side<0?-.28:.28; const sleeveMesh=new THREE.Mesh(new THREE.BoxGeometry(.18,.18,.42),sleeve);sleeveMesh.position.set(x,-.07,.08);sleeveMesh.rotation.x=-.35; const fore=new THREE.Mesh(new THREE.BoxGeometry(.15,.15,.38),skin);fore.position.set(x*.9,-.11,-.18);fore.rotation.x=-.2; const hand=new THREE.Mesh(new THREE.BoxGeometry(.17,.13,.16),glove);hand.position.set(x*.78,-.1,-.42); g.add(sleeveMesh,fore,hand); firstPersonGroup.add(g); [sleeveMesh,fore,hand].forEach(m=>markShadowObject(m,{cast:true,receive:true})); return g;};
+        leftArm=arm(-1); rightArm=arm(1);
+        [new THREE.Mesh(new THREE.BoxGeometry(.18,.16,.72),gunMat),new THREE.Mesh(new THREE.BoxGeometry(.12,.12,.34),gunMat)].forEach((m,i)=>{m.position.set(i?0:.04,i?-.02:-.06,i?-.75:-.38);weaponGroup.add(m);markShadowObject(m,{cast:true,receive:true});});
+        setWeaponPose("glock");
+    }
+    function setWeaponPose(name){activeWeapon=name; const poses={glock:{wg:[.05,-.08,-.2],l:[-.16,-.15,-.15],r:[.22,-.1,-.22]},ak:{wg:[.06,-.1,-.3],l:[-.34,-.12,-.5],r:[.26,-.1,-.25]},awp:{wg:[.03,-.09,-.38],l:[-.31,-.08,-.68],r:[.28,-.11,-.3]},shotgun:{wg:[.04,-.12,-.34],l:[-.25,-.2,-.58],r:[.26,-.12,-.28]}}[name]; weaponGroup.position.set(...poses.wg); leftArm.position.set(...poses.l); rightArm.position.set(...poses.r); switchMotion=.12; }
+    function animateFirstPerson(dt,moveSpeed){if(!firstPersonGroup)return; fpBobTime+=dt*(2+moveSpeed*.9); recoilKick=Math.max(0,recoilKick-dt*5); reloadMotion=Math.max(0,reloadMotion-dt*2.4); switchMotion=Math.max(0,switchMotion-dt*2.8); const amp=moveSpeed>.1?.014+Math.min(moveSpeed/8,.02):.004; firstPersonGroup.position.x=.32+Math.sin(fpBobTime*6)*amp; firstPersonGroup.position.y=-.36+Math.cos(fpBobTime*12)*amp-reloadMotion*.05-switchMotion*.05; firstPersonGroup.position.z=-.78+recoilKick*.16+switchMotion*.08; firstPersonGroup.rotation.z=Math.sin(fpBobTime*6)*amp*.9; weaponGroup.rotation.x=-recoilKick*.35+reloadMotion*.35; leftArm.rotation.x=weaponGroup.rotation.x*.5; rightArm.rotation.x=weaponGroup.rotation.x*.55; }
 
     function jump(){if(controlsEnabled&&player.grounded){player.velocity.y=player.jumpSpeed;player.grounded=false;}}
     function updatePlayer(dt) {
@@ -376,9 +437,10 @@
         player.velocity.y-=player.gravity*dt; const nextY=player.position.y+player.velocity.y*dt, ground=groundHeightAt(player.position.x,player.position.z,player.position.y-PLAYER_HEIGHT+.4),groundY=ground+PLAYER_HEIGHT;
         if(Number.isFinite(ground)&&nextY<=groundY){player.position.y=groundY;player.velocity.y=0;player.grounded=true;}else{player.position.y=nextY;player.grounded=false;}
         updateCamera();
+        animateFirstPerson(dt,Math.hypot(forwardInput,strafeInput)*player.speed);
     }
-    function animate(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;updatePlayer(dt);renderer.render(scene,camera);requestAnimationFrame(animate);}
-    function initializeThreeRuntime(){if(typeof THREE==="undefined")throw new Error("Three.js não pôde ser carregado");scene=new THREE.Scene();scene.background=new THREE.Color(0x8bb0c1);scene.fog=new THREE.Fog(0x8bb0c1,85,165);camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,250);renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.domElement.id="game-canvas";document.getElementById("game-container").prepend(renderer.domElement);mapGroup=new THREE.Group();scene.add(mapGroup);scene.add(new THREE.HemisphereLight(0xffe5b5,0x665748,1.6));const sun=new THREE.DirectionalLight(0xffd79c,1.4);sun.position.set(-30,55,25);scene.add(sun);player.position=new THREE.Vector3(0,PLAYER_HEIGHT,0);player.velocity=new THREE.Vector3();updateCamera();addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});requestAnimationFrame(animate);}
+    function animate(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;updatePlayer(dt);if(!controlsEnabled)animateFirstPerson(dt,0);renderer.render(scene,camera);requestAnimationFrame(animate);}
+    function initializeThreeRuntime(){if(typeof THREE==="undefined")throw new Error("Three.js não pôde ser carregado");scene=new THREE.Scene();scene.background=new THREE.Color(0x8bb0c1);scene.fog=new THREE.Fog(0x8bb0c1,85,165);currentFov=Number(localStorage.getItem("cs16plh-fov"))||75;graphicsQuality=localStorage.getItem("cs16plh-quality")||"Média";shadowsEnabled=(localStorage.getItem("cs16plh-shadows")||"Ligadas")!=="Desligadas";currentTimeOfDay=localStorage.getItem("cs16plh-time-of-day")||"midday";camera=new THREE.PerspectiveCamera(currentFov,innerWidth/innerHeight,.1,250);renderer=new THREE.WebGLRenderer({antialias:graphicsQuality!=="Baixa",powerPreference:"high-performance"});renderer.setSize(innerWidth,innerHeight);renderer.domElement.id="game-canvas";document.getElementById("game-container").prepend(renderer.domElement);scene.add(camera);mapGroup=new THREE.Group();scene.add(mapGroup);ambientLight=new THREE.HemisphereLight(0xffe5b5,0x665748,1.6);scene.add(ambientLight);sunLight=new THREE.DirectionalLight(0xffd79c,1.4);sunLight.position.set(-30,55,25);scene.add(sunLight);[[-34,5,-31],[42,5,-31],[0,5,-8],[35,4,13]].forEach(([x,y,z])=>{const l=new THREE.PointLight(0xffd79c,.75,22,2);l.position.set(x,y,z);l.visible=false;nightLights.push(l);scene.add(l);});player.position=new THREE.Vector3(0,PLAYER_HEIGHT,0);player.velocity=new THREE.Vector3();camera.near=.05;createFirstPersonView();applyFov(currentFov);applyGraphicsSettings();setMapTimeOfDay(currentTimeOfDay);updateCamera();addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});requestAnimationFrame(animate);}
 
     document.querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>{closeWindows();document.getElementById(b.dataset.open).classList.add("open")}));
     document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{closeWindows();resumeMatch()}));
@@ -387,12 +449,18 @@
     const modeSelect=document.getElementById("game-mode"); modeSelect.addEventListener("change",()=>document.querySelectorAll("[data-mode-fields]").forEach(g=>g.classList.toggle("active",g.dataset.modeFields.split(" ").includes(modeSelect.value))));
     function saveMatchOptions(){currentMatchOptions={mode:modeSelect.value,map:document.getElementById("map").value,team:document.getElementById("team").value,roundTime:document.getElementById("round-time").value,bestOf:document.getElementById("best-of").value,matchTime:document.getElementById("match-time").value,botCount:+document.getElementById("bot-count").value,difficulty:document.getElementById("difficulty").value};localStorage.setItem("cs16plh-match-options",JSON.stringify(currentMatchOptions));selectedMap=currentMatchOptions.map;}
     document.getElementById("game-form").addEventListener("submit",async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type="submit"]');b.disabled=true;b.textContent="Iniciando partida…";saveMatchOptions();await startMatch();b.disabled=false;b.textContent="Iniciar partida";});
-    addEventListener("keydown",e=>{keys[e.code]=true;if(e.code==="Space"){e.preventDefault();jump()}if(e.key==="Escape")openPauseMenu()}); addEventListener("keyup",e=>keys[e.code]=false);
+    addEventListener("keydown",e=>{keys[e.code]=true;if(e.code==="Space"){e.preventDefault();jump()}if(e.code==="KeyR")reloadMotion=.45;if(e.code==="KeyQ"){const w=["glock","ak","awp","shotgun"];setWeaponPose(w[(w.indexOf(activeWeapon)+1)%w.length]);showToast(`Arma: ${activeWeapon.toUpperCase()}`);}if(e.key==="Escape")openPauseMenu()}); addEventListener("keyup",e=>keys[e.code]=false);
     const rendererPointer=()=>{if(controlsEnabled&&document.pointerLockElement!==renderer.domElement)renderer.domElement.requestPointerLock?.()};
     addEventListener("mousemove",e=>{if(controlsEnabled&&document.pointerLockElement===renderer.domElement){player.yaw-=e.movementX*.0023;player.pitch=Math.max(-1.48,Math.min(1.48,player.pitch-e.movementY*.0023))}});
+    addEventListener("mousedown",e=>{if(controlsEnabled&&e.button===0){recoilKick=.18;}});
     document.getElementById("error-back").addEventListener("click",()=>{document.getElementById("error-overlay").classList.remove("open");document.getElementById("menu-overlay").hidden=false;setGameState(GAME_STATES.MENU)});
     const bindings=[["Avançar","W"],["Recuar","S"],["Mover à esquerda","A"],["Mover à direita","D"],["Pular","Espaço"],["Agachar","Ctrl"],["Atirar","Mouse 1"],["Mira secundária","Mouse 2"],["Recarregar","R"],["Usar / interagir","E"],["Trocar arma","Q"],["Placar","Tab"]];document.getElementById("key-bindings").innerHTML=bindings.map(([n,k])=>`<label class="key-row"><span>${n}</span><input class="key-bind" value="${k}" aria-label="Tecla para ${n}"></label>`).join("");
-    const settings=[["Posição geral",0,100,50,"%"],["Tamanho",50,150,100,"%"],["Transparência",10,100,80,"%"],["Sensibilidade",1,10,5,""]], audio=["Volume geral","Música","Efeitos sonoros","Passos","Tiros","Interface"].map(n=>[n,0,100,75,"%"]);const ranges=(a,p)=>a.map(([n,min,max,v,s],i)=>`<div class="field"><label>${n}</label><div class="range-line"><input id="${p}-${i}" type="range" min="${min}" max="${max}" value="${v}"><output>${v}${s}</output></div></div>`).join("");document.getElementById("touch-settings").innerHTML=ranges(settings,"touch");document.getElementById("audio-settings").innerHTML=ranges(audio,"audio");document.querySelectorAll('input[type="range"]').forEach(i=>i.addEventListener("input",()=>{const o=i.parentElement.querySelector("output");if(o)o.value=i.value+(o.textContent.includes("%")?"%":"")}));
+    const settings=[["Posição geral",0,100,50,"%"],["Tamanho",50,150,100,"%"],["Transparência",10,100,80,"%"],["Sensibilidade",1,10,5,""]], audio=["Volume geral","Música","Efeitos sonoros","Passos","Tiros","Interface"].map(n=>[n,0,100,75,"%"]);const ranges=(a,p)=>a.map(([n,min,max,v,s],i)=>`<div class="field"><label>${n}</label><div class="range-line"><input id="${p}-${i}" type="range" min="${min}" max="${max}" value="${v}"><output>${v}${s}</output></div></div>`).join("");document.getElementById("touch-settings").innerHTML=ranges(settings,"touch");document.getElementById("audio-settings").innerHTML=ranges(audio,"audio");document.querySelectorAll('input[type="range"]').forEach(i=>i.addEventListener("input",()=>{const o=i.parentElement.querySelector("output");if(i.id==="camera-fov"){applyFov(i.value);return;}if(i.id==="render-distance"){setRenderDistance(i.value);return;}if(o)o.value=i.value+(o.textContent.includes("%")?"%":"")}));
+    currentFov=Number(localStorage.getItem("cs16plh-fov"))||currentFov;graphicsQuality=localStorage.getItem("cs16plh-quality")||graphicsQuality;shadowsEnabled=(localStorage.getItem("cs16plh-shadows")||"Ligadas")!=="Desligadas";currentTimeOfDay=localStorage.getItem("cs16plh-time-of-day")||currentTimeOfDay;
+    document.getElementById("quality").addEventListener("change",e=>{graphicsQuality=e.target.value;applyGraphicsSettings();});
+    document.getElementById("shadows").addEventListener("change",e=>{shadowsEnabled=e.target.value!=="Desligadas";localStorage.setItem("cs16plh-shadows",e.target.value);applyShadowSettings();});
+    document.getElementById("map-time-of-day").addEventListener("change",e=>setMapTimeOfDay(e.target.value));
+    document.getElementById("quality").value=graphicsQuality;document.getElementById("shadows").value=shadowsEnabled?"Ligadas":"Desligadas";document.getElementById("map-time-of-day").value=currentTimeOfDay;applyFov(currentFov);
     if(matchMedia("(pointer: coarse)").matches)document.body.classList.add("touch-device");
     const joystickZone=document.getElementById("joystick-zone"),joystickKnob=document.getElementById("joystick-knob"),lookZone=document.getElementById("look-zone");
     let movePointerId=null;
@@ -462,8 +530,8 @@
         button.addEventListener("pointerup",release);button.addEventListener("pointercancel",release);
     }
     bindTouchButton("touch-jump",jump);
-    bindTouchButton("touch-fire",()=>showToast("Disparo"));
-    bindTouchButton("touch-reload",()=>showToast("Recarregando"));
+    bindTouchButton("touch-fire",()=>{recoilKick=.18;showToast("Disparo")});
+    bindTouchButton("touch-reload",()=>{reloadMotion=.45;showToast("Recarregando")});
     bindTouchButton("touch-menu",openPauseMenu);
     document.getElementById("exit-button").addEventListener("click",()=>showToast("Use os controles do navegador para fechar."));
     try{initializeThreeRuntime();renderer.domElement.addEventListener("click",rendererPointer);}catch(error){document.getElementById("error-overlay").classList.add("open");document.getElementById("error-message").textContent=error.message;console.error(error)}
