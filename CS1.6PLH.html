@@ -68,6 +68,14 @@
         .key-row { display: grid; grid-template-columns: 1fr 90px; align-items: center; gap: 8px; font-size: 12px; }
         .key-bind { min-height: 28px; padding: 4px; text-align: center; }
         .notice { padding: 34px 15px; color: #c8ccca; font-size: 18px; text-align: center; }
+        .multiplayer-panel { display: grid; gap: 12px; }
+        .multiplayer-panel[hidden] { display: none; }
+        .mp-help, .mp-message, #mp-status { color: #c8ccca; font-size: 12px; line-height: 1.45; }
+        .mp-room-card { display: grid; gap: 8px; padding: 12px; border: 1px solid #596168; background: #101518; }
+        .mp-code { padding: 10px; border: 1px dashed var(--gold); color: var(--gold); font-size: 28px; font-weight: 800; letter-spacing: 5px; text-align: center; }
+        .mp-room-card ul { padding-left: 18px; line-height: 1.6; }
+        .mp-room-card pre { white-space: pre-wrap; color: #dfe3dd; font-size: 12px; }
+        .remote-player { position: absolute; width: 120px; padding: 3px 5px; border-radius: 2px; background: #111c; color: #fff; font-size: 11px; text-align: center; pointer-events: none; transform: translate(-50%, -100%); }
         .credits { padding: 28px; text-align: center; line-height: 1.8; }
         .credits strong { color: var(--gold); }
         #toast { position: absolute; top: 20px; left: 50%; z-index: 20; padding: 9px 15px; border: 1px solid var(--gold); background: #171c20; color: #fff; font-size: 12px; opacity: 0; pointer-events: none; transform: translate(-50%,-12px); transition: .2s; }
@@ -120,7 +128,7 @@
             <h1 class="brand">CS1.6PLH</h1>
             <nav class="main-nav">
                 <button class="menu-button" type="button" data-open="new-game">Novo jogo</button>
-                <button class="menu-button" type="button" data-open="servers">Procurar servidor</button>
+                <button class="menu-button" type="button" data-open="multiplayer">MULTIPLAYER</button>
                 <button class="menu-button" type="button" data-open="settings">Configurações</button>
                 <button class="menu-button" type="button" data-open="credits">Créditos</button>
                 <button class="menu-button" id="exit-button" type="button">Sair</button>
@@ -150,8 +158,37 @@
             </section>
         </div>
 
-        <div class="modal-backdrop" id="servers" role="dialog" aria-modal="true" aria-labelledby="servers-title">
-            <section class="window"><header class="window-header"><h2 id="servers-title">Procurar servidor</h2><button class="close-button" data-close type="button" aria-label="Fechar">×</button></header><p class="notice">Em manutenção</p></section>
+        <div class="modal-backdrop" id="multiplayer" role="dialog" aria-modal="true" aria-labelledby="multiplayer-title">
+            <section class="window">
+                <header class="window-header"><h2 id="multiplayer-title">MULTIPLAYER</h2><button class="close-button" data-close type="button" aria-label="Fechar">×</button></header>
+                <div class="window-body">
+                    <div class="multiplayer-panel" id="mp-home">
+                        <button class="primary-button" id="mp-create-screen" type="button">Criar sala</button>
+                        <button class="secondary-button" id="mp-join-screen" type="button">Entrar em sala</button>
+                        <button class="secondary-button" data-close type="button">Voltar</button>
+                        <p class="mp-help">Requer servidor de sinalização WebSocket configurado em <code>window.CS16PLH_SIGNALING_URL</code>. WebRTC RTCDataChannel troca apenas estados da partida; cada aparelho monta o de_dust2 localmente.</p>
+                    </div>
+                    <form class="multiplayer-panel" id="mp-create" hidden>
+                        <div class="form-grid">
+                            <div class="field"><label for="mp-mode">Modo</label><select id="mp-mode"><option value="tdm">Team Deathmatch (TDM)</option><option value="dm">Deathmatch (DM)</option><option value="bomb">Bomb</option></select></div>
+                            <div class="field"><label for="mp-map">Mapa</label><select id="mp-map"><option value="de_dust2">de_dust2</option></select></div>
+                            <div class="field mp-team-field"><label for="mp-team">Equipe do host</label><select id="mp-team"><option value="ct">Contra-Terrorista (CT)</option><option value="tr">Terrorista (TR)</option></select></div>
+                            <div class="mode-fields active" data-mp-mode-fields="tdm bomb"><div class="field"><label for="mp-round-time">Tempo por rodada</label><select id="mp-round-time"><option>2 minutos</option><option selected>3 minutos</option><option>5 minutos</option></select></div><div class="field"><label for="mp-best-of">Melhor de</label><select id="mp-best-of"><option>3</option><option>5</option><option>7</option></select></div></div>
+                            <div class="mode-fields" data-mp-mode-fields="dm"><div class="field full"><label for="mp-match-time">Duração da partida</label><select id="mp-match-time"><option>5 minutos</option><option selected>10 minutos</option><option>15 minutos</option><option>20 minutos</option></select></div></div>
+                            <div class="field"><label for="mp-difficulty">Dificuldade auxiliar local</label><select id="mp-difficulty"><option>Fácil</option><option selected>Normal</option><option>Difícil</option><option>Especialista</option></select></div>
+                        </div>
+                        <div class="mp-room-card" id="mp-room-card" hidden><p>Código da sala</p><div class="mp-code" id="mp-room-code">------</div><button class="secondary-button" id="mp-copy-code" type="button">Copiar código</button><h3>Jogadores conectados</h3><ul id="mp-player-list"></ul><p id="mp-status">Aguardando outro jogador...</p></div>
+                        <div class="actions"><button class="secondary-button" id="mp-create-back" type="button">Voltar</button><button class="primary-button" id="mp-create-room" type="submit">Criar sala</button><button class="primary-button" id="mp-start-match" type="button" disabled>Iniciar partida</button></div>
+                    </form>
+                    <form class="multiplayer-panel" id="mp-join" hidden>
+                        <div class="field"><label for="mp-code-input">Código da sala</label><input id="mp-code-input" type="text" maxlength="6" autocomplete="off" placeholder="ABC123"></div>
+                        <div class="field mp-team-field"><label for="mp-join-team">Equipe</label><select id="mp-join-team"><option value="ct">Contra-Terrorista (CT)</option><option value="tr">Terrorista (TR)</option></select></div>
+                        <p class="mp-message" id="mp-join-message"></p>
+                        <div class="mp-room-card" id="mp-join-card" hidden><h3>Configurações recebidas</h3><pre id="mp-room-options"></pre><h3>Jogadores conectados</h3><ul id="mp-join-player-list"></ul></div>
+                        <div class="actions"><button class="secondary-button" id="mp-join-back" type="button">Voltar</button><button class="primary-button" type="submit">Entrar</button></div>
+                    </form>
+                </div>
+            </section>
         </div>
 
         <div class="modal-backdrop" id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -421,6 +458,42 @@
     function setWeaponPose(name){activeWeapon=name; const poses={glock:{wg:[.05,-.08,-.2],l:[-.16,-.15,-.15],r:[.22,-.1,-.22]},ak:{wg:[.06,-.1,-.3],l:[-.34,-.12,-.5],r:[.26,-.1,-.25]},awp:{wg:[.03,-.09,-.38],l:[-.31,-.08,-.68],r:[.28,-.11,-.3]},shotgun:{wg:[.04,-.12,-.34],l:[-.25,-.2,-.58],r:[.26,-.12,-.28]}}[name]; weaponGroup.position.set(...poses.wg); leftArm.position.set(...poses.l); rightArm.position.set(...poses.r); switchMotion=.12; }
     function animateFirstPerson(dt,moveSpeed){if(!firstPersonGroup)return; fpBobTime+=dt*(2+moveSpeed*.9); recoilKick=Math.max(0,recoilKick-dt*5); reloadMotion=Math.max(0,reloadMotion-dt*2.4); switchMotion=Math.max(0,switchMotion-dt*2.8); const amp=moveSpeed>.1?.014+Math.min(moveSpeed/8,.02):.004; firstPersonGroup.position.x=.32+Math.sin(fpBobTime*6)*amp; firstPersonGroup.position.y=-.36+Math.cos(fpBobTime*12)*amp-reloadMotion*.05-switchMotion*.05; firstPersonGroup.position.z=-.78+recoilKick*.16+switchMotion*.08; firstPersonGroup.rotation.z=Math.sin(fpBobTime*6)*amp*.9; weaponGroup.rotation.x=-recoilKick*.35+reloadMotion*.35; leftArm.rotation.x=weaponGroup.rotation.x*.5; rightArm.rotation.x=weaponGroup.rotation.x*.55; }
 
+
+
+    const MULTIPLAYER_VERSION = "cs16plh-mp-1";
+    const SIGNALING_URL = window.CS16PLH_SIGNALING_URL || localStorage.getItem("cs16plh-signaling-url") || "ws://localhost:8080";
+    const mpState = { active:false, role:null, code:null, id:null, name:"Jogador "+Math.floor(1000+Math.random()*9000), hostId:null, ws:null, peers:new Map(), players:new Map(), options:null, lastSend:0, score:{ct:0,tr:0,dm:{}}, roomOpen:false };
+    function randomRoomCode(){ return Array.from({length:6},()=>"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random()*32)]).join(""); }
+    function compactOptionsFromMultiplayer(){ const mode=document.getElementById("mp-mode").value; return {version:MULTIPLAYER_VERSION, mode, map:"de_dust2", team:mode==="dm"?"dm":document.getElementById("mp-team").value, roundTime:document.getElementById("mp-round-time").value, bestOf:document.getElementById("mp-best-of").value, matchTime:document.getElementById("mp-match-time").value, difficulty:document.getElementById("mp-difficulty").value}; }
+    function sendSignal(message){ if(mpState.ws?.readyState===WebSocket.OPEN) mpState.ws.send(JSON.stringify({...message, roomCode:mpState.code})); }
+    function connectSignaling(){ return new Promise((resolve,reject)=>{ const ws=new WebSocket(SIGNALING_URL); const fail=setTimeout(()=>reject(new Error("Servidor de sinalização inacessível: "+SIGNALING_URL)),6000); ws.addEventListener("open",()=>{clearTimeout(fail);mpState.ws=ws;resolve(ws);},{once:true}); ws.addEventListener("message",event=>handleSignal(JSON.parse(event.data))); ws.addEventListener("close",()=>{showToast("Conexão de sinalização encerrada");handleMultiplayerDisconnect("Servidor de sinalização desconectado")}); ws.addEventListener("error",()=>reject(new Error("Falha no WebSocket de sinalização")),{once:true}); }); }
+    function createPeer(remoteId,initiator=false){ const pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]}); const peer={id:remoteId, pc, dc:null, lastSeen:performance.now()}; mpState.peers.set(remoteId,peer); pc.onicecandidate=e=>{ if(e.candidate) sendSignal({type:"ice", to:remoteId, candidate:e.candidate}); }; pc.ondatachannel=e=>setupDataChannel(peer,e.channel); if(initiator) setupDataChannel(peer,pc.createDataChannel("match",{ordered:false,maxRetransmits:0})); return peer; }
+    function setupDataChannel(peer,dc){ peer.dc=dc; dc.onopen=()=>{ sendPeer(peer,{t:"hello", id:mpState.id, name:mpState.name, team:getLocalTeam(), options:mpState.options}); broadcastPlayers(); showToast("Jogador conectado") }; dc.onmessage=e=>handlePeerMessage(peer,JSON.parse(e.data)); dc.onclose=()=>handlePeerLeft(peer.id); }
+    function sendPeer(peer,msg){ if(peer.dc?.readyState==="open") peer.dc.send(JSON.stringify(msg)); }
+    function broadcastPeers(msg){ mpState.peers.forEach(peer=>sendPeer(peer,msg)); }
+    function getLocalTeam(){ return mpState.options?.mode==="dm"?"dm":(mpState.role==="host"?mpState.options.team:document.getElementById("mp-join-team").value); }
+    function handlePeerMessage(peer,msg){ peer.lastSeen=performance.now(); if(msg.t==="hello"){ mpState.players.set(msg.id,{id:msg.id,name:msg.name,team:msg.team,host:msg.id===mpState.hostId,health:100}); if(mpState.role!=="host"&&msg.options){mpState.options=msg.options;renderReceivedOptions();} updatePlayerLists(); if(mpState.role==="host") enforceTeamsAndBroadcast(); }
+        if(msg.t==="players"&&mpState.role!=="host"){ mpState.players=new Map(msg.players.map(p=>[p.id,p])); updatePlayerLists(); }
+        if(msg.t==="start"&&mpState.role!=="host"){ currentMatchOptions={...msg.options,botCount:0}; startMatch(); }
+        if(msg.t==="s") renderRemoteState(peer.id,msg); if(msg.t==="fire") showToast(`${mpState.players.get(peer.id)?.name||"Jogador"} disparou`); if(msg.t==="hit"&&mpState.role==="host") validateDamage(peer,msg); if(msg.t==="death") showToast("Jogador eliminado"); if(msg.t==="bomb") showToast("Bomba: "+msg.a); }
+    function validateDamage(peer,msg){ const target=mpState.players.get(msg.target); if(!target||target.health<=0||msg.damage>50)return; target.health=Math.max(0,target.health-msg.damage); if(target.health===0) broadcastPeers({t:"death", id:target.id}); broadcastPlayers(); }
+    function enforceTeamsAndBroadcast(){ const players=[...mpState.players.values()]; if(mpState.options.mode!=="dm"){ const ct=players.filter(p=>p.team==="ct").length,tr=players.filter(p=>p.team==="tr").length; document.getElementById("mp-status").textContent=Math.abs(ct-tr)>1?"Equipes muito desequilibradas; ajuste CT/TR.":(players.length<2?"Aguardando outro jogador...":"Pronto para iniciar."); document.getElementById("mp-start-match").disabled=players.length<2||Math.abs(ct-tr)>1; } else document.getElementById("mp-start-match").disabled=players.length<2; broadcastPlayers(); }
+    function broadcastPlayers(){ if(mpState.role==="host") broadcastPeers({t:"players", players:[...mpState.players.values()]}); updatePlayerLists(); }
+    function updatePlayerLists(){ const items=[...mpState.players.values()].map(p=>`<li>${p.name}${p.host?" (host)":""}${p.team&&p.team!=="dm"?" — "+p.team.toUpperCase():""}${p.health!==undefined?" — +"+p.health:""}</li>`).join(""); ["mp-player-list","mp-join-player-list"].forEach(id=>{const el=document.getElementById(id); if(el)el.innerHTML=items;}); if(mpState.role==="host") enforceTeamsAndBroadcast; }
+    async function handleSignal(message){ if(message.type==="created"){ mpState.id=message.playerId; mpState.hostId=message.playerId; mpState.players.set(mpState.id,{id:mpState.id,name:mpState.name,team:getLocalTeam(),host:true,health:100}); updatePlayerLists(); }
+        if(message.type==="joined"){ mpState.id=message.playerId; mpState.hostId=message.hostId; mpState.options=message.options; mpState.players.set(mpState.id,{id:mpState.id,name:mpState.name,team:getLocalTeam(),host:false,health:100}); renderReceivedOptions(); updatePlayerLists(); }
+        if(message.type==="peer-joined"&&mpState.role==="host"){ const peer=createPeer(message.playerId,true); const offer=await peer.pc.createOffer(); await peer.pc.setLocalDescription(offer); sendSignal({type:"offer", to:message.playerId, description:offer}); }
+        if(message.type==="offer"){ const peer=createPeer(message.from,false); await peer.pc.setRemoteDescription(message.description); const answer=await peer.pc.createAnswer(); await peer.pc.setLocalDescription(answer); sendSignal({type:"answer", to:message.from, description:answer}); }
+        if(message.type==="answer"){ const peer=mpState.peers.get(message.from); if(peer) await peer.pc.setRemoteDescription(message.description); }
+        if(message.type==="ice"){ const peer=mpState.peers.get(message.from); if(peer&&message.candidate) await peer.pc.addIceCandidate(message.candidate); }
+        if(message.type==="error") showJoinMessage(({ROOM_NOT_FOUND:"Sala inexistente.",ROOM_FULL:"Sala cheia.",VERSION_MISMATCH:"Versão incompatível."}[message.code])||message.message); if(message.type==="peer-left") handlePeerLeft(message.playerId); if(message.type==="host-left") handleMultiplayerDisconnect("Host saiu; sala encerrada."); }
+    function showJoinMessage(message){ document.getElementById("mp-join-message").textContent=message; }
+    function handlePeerLeft(id){ const name=mpState.players.get(id)?.name||"Jogador"; mpState.players.delete(id); mpState.peers.get(id)?.pc.close(); mpState.peers.delete(id); updatePlayerLists(); showToast(`${name} desconectou`); }
+    function handleMultiplayerDisconnect(message){ if(mpState.active) showToast(message); }
+    function renderReceivedOptions(){ document.getElementById("mp-join-card").hidden=false; document.getElementById("mp-room-options").textContent=JSON.stringify(mpState.options,null,2); document.querySelector("#mp-join .mp-team-field").hidden=mpState.options?.mode==="dm"; }
+    function renderRemoteState(id,msg){ const p=mpState.players.get(id); if(p){p.health=msg.h;p.team=msg.e;} }
+    function sendStateSnapshot(force=false){ if(!mpState.active||!player.position)return; const now=performance.now(); if(!force&&now-mpState.lastSend<80)return; mpState.lastSend=now; broadcastPeers({t:"s",x:+player.position.x.toFixed(2),y:+player.position.y.toFixed(2),z:+player.position.z.toFixed(2),r:+player.yaw.toFixed(3),p:+player.pitch.toFixed(3),a:mobileForward||mobileStrafe?1:0,h:player.health,e:getLocalTeam(),sc:mpState.score,tm:Date.now(),rs:gameState,sp:false}); }
+
     function jump(){if(controlsEnabled&&player.grounded){player.velocity.y=player.jumpSpeed;player.grounded=false;}}
     function updatePlayer(dt) {
         if(!controlsEnabled||gameState!==GAME_STATES.JOGANDO)return;
@@ -439,7 +512,7 @@
         updateCamera();
         animateFirstPerson(dt,Math.hypot(forwardInput,strafeInput)*player.speed);
     }
-    function animate(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;updatePlayer(dt);if(!controlsEnabled)animateFirstPerson(dt,0);renderer.render(scene,camera);requestAnimationFrame(animate);}
+    function animate(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;updatePlayer(dt);sendStateSnapshot();if(!controlsEnabled)animateFirstPerson(dt,0);renderer.render(scene,camera);requestAnimationFrame(animate);}
     function initializeThreeRuntime(){if(typeof THREE==="undefined")throw new Error("Three.js não pôde ser carregado");scene=new THREE.Scene();scene.background=new THREE.Color(0x8bb0c1);scene.fog=new THREE.Fog(0x8bb0c1,85,165);currentFov=Number(localStorage.getItem("cs16plh-fov"))||75;graphicsQuality=localStorage.getItem("cs16plh-quality")||"Média";shadowsEnabled=(localStorage.getItem("cs16plh-shadows")||"Ligadas")!=="Desligadas";currentTimeOfDay=localStorage.getItem("cs16plh-time-of-day")||"midday";camera=new THREE.PerspectiveCamera(currentFov,innerWidth/innerHeight,.1,250);renderer=new THREE.WebGLRenderer({antialias:graphicsQuality!=="Baixa",powerPreference:"high-performance"});renderer.setSize(innerWidth,innerHeight);renderer.domElement.id="game-canvas";document.getElementById("game-container").prepend(renderer.domElement);scene.add(camera);mapGroup=new THREE.Group();scene.add(mapGroup);ambientLight=new THREE.HemisphereLight(0xffe5b5,0x665748,1.6);scene.add(ambientLight);sunLight=new THREE.DirectionalLight(0xffd79c,1.4);sunLight.position.set(-30,55,25);scene.add(sunLight);[[-34,5,-31],[42,5,-31],[0,5,-8],[35,4,13]].forEach(([x,y,z])=>{const l=new THREE.PointLight(0xffd79c,.75,22,2);l.position.set(x,y,z);l.visible=false;nightLights.push(l);scene.add(l);});player.position=new THREE.Vector3(0,PLAYER_HEIGHT,0);player.velocity=new THREE.Vector3();camera.near=.05;createFirstPersonView();applyFov(currentFov);applyGraphicsSettings();setMapTimeOfDay(currentTimeOfDay);updateCamera();addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});requestAnimationFrame(animate);}
 
     document.querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>{closeWindows();document.getElementById(b.dataset.open).classList.add("open")}));
@@ -530,9 +603,22 @@
         button.addEventListener("pointerup",release);button.addEventListener("pointercancel",release);
     }
     bindTouchButton("touch-jump",jump);
-    bindTouchButton("touch-fire",()=>{recoilKick=.18;showToast("Disparo")});
+    bindTouchButton("touch-fire",()=>{recoilKick=.18;broadcastPeers({t:"fire",w:activeWeapon,tm:Date.now()});showToast("Disparo")});
     bindTouchButton("touch-reload",()=>{reloadMotion=.45;showToast("Recarregando")});
     bindTouchButton("touch-menu",openPauseMenu);
+
+    function showMpPanel(id){ ["mp-home","mp-create","mp-join"].forEach(panel=>document.getElementById(panel).hidden=panel!==id); }
+    document.getElementById("mp-create-screen").addEventListener("click",()=>showMpPanel("mp-create"));
+    document.getElementById("mp-join-screen").addEventListener("click",()=>showMpPanel("mp-join"));
+    document.getElementById("mp-create-back").addEventListener("click",()=>showMpPanel("mp-home"));
+    document.getElementById("mp-join-back").addEventListener("click",()=>showMpPanel("mp-home"));
+    const mpModeSelect=document.getElementById("mp-mode");
+    mpModeSelect.addEventListener("change",()=>{document.querySelectorAll("[data-mp-mode-fields]").forEach(g=>g.classList.toggle("active",g.dataset.mpModeFields.split(" ").includes(mpModeSelect.value)));document.querySelectorAll("#mp-create .mp-team-field").forEach(el=>el.hidden=mpModeSelect.value==="dm");});
+    document.getElementById("mp-copy-code").addEventListener("click",async()=>{await navigator.clipboard?.writeText(mpState.code);showToast("Código copiado")});
+    document.getElementById("mp-create").addEventListener("submit",async e=>{e.preventDefault(); mpState.active=true; mpState.role="host"; mpState.code=randomRoomCode(); mpState.options=compactOptionsFromMultiplayer(); await connectSignaling(); sendSignal({type:"create-room", roomCode:mpState.code, version:MULTIPLAYER_VERSION, options:mpState.options, name:mpState.name, maxPlayers:8}); document.getElementById("mp-room-card").hidden=false; document.getElementById("mp-room-code").textContent=mpState.code; document.getElementById("mp-create-room").disabled=true; document.getElementById("mp-status").textContent="Aguardando outro jogador..."; });
+    document.getElementById("mp-join").addEventListener("submit",async e=>{e.preventDefault(); showJoinMessage(""); mpState.active=true; mpState.role="guest"; mpState.code=document.getElementById("mp-code-input").value.trim().toUpperCase(); await connectSignaling(); sendSignal({type:"join-room", roomCode:mpState.code, version:MULTIPLAYER_VERSION, name:mpState.name, team:getLocalTeam()}); });
+    document.getElementById("mp-start-match").addEventListener("click",()=>{ if(mpState.players.size<2){showToast("A partida precisa de pelo menos 2 jogadores.");return;} currentMatchOptions={...mpState.options,botCount:0}; broadcastPeers({t:"start",options:mpState.options}); startMatch(); });
+
     document.getElementById("exit-button").addEventListener("click",()=>showToast("Use os controles do navegador para fechar."));
     try{initializeThreeRuntime();renderer.domElement.addEventListener("click",rendererPointer);}catch(error){document.getElementById("error-overlay").classList.add("open");document.getElementById("error-message").textContent=error.message;console.error(error)}
 </script>
