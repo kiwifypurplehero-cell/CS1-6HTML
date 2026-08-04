@@ -179,8 +179,8 @@
         <div class="modal-backdrop" id="credits" role="dialog" aria-modal="true" aria-labelledby="credits-title">
             <section class="window"><header class="window-header"><h2 id="credits-title">Créditos</h2><button class="close-button" data-close type="button" aria-label="Fechar">×</button></header><div class="credits">Criado por<br><strong>Codex</strong><br><strong>Matheus (Plump)</strong></div></section>
         </div>
-        <div id="toast" role="status" aria-live="polite"></div>
     </section>
+    <div id="toast" role="status" aria-live="polite"></div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js" onerror="window.__threeLoadFailed = true"></script>
 <script>
@@ -189,7 +189,7 @@
     const PLAYER_RADIUS = 0.65;
     const BOUNDS = Object.freeze({ minX: -60, maxX: 60, minZ: -60, maxZ: 60 });
 
-    function buildDust2Map(context) {
+    function buildDust2Map(context = { THREE, scene, mapGroup, colliders, wallObjects }) {
         if (!context || !context.THREE || !context.scene || !context.mapGroup) {
             throw new TypeError("buildDust2Map requer { THREE, scene, mapGroup }.");
         }
@@ -232,6 +232,28 @@
             });
         });
 
+        const coverMaterial = new THREE.MeshStandardMaterial({ color: 0x9b7950, roughness: 0.95 });
+        const crateMaterial = new THREE.MeshStandardMaterial({ color: 0x765331, roughness: 1 });
+        const addSolid = (name, x, y, z, width, height, depth, material) => {
+            const geometry = new THREE.BoxGeometry(width, height, depth);
+            const object = new THREE.Mesh(geometry, material);
+            object.name = name;
+            object.position.set(x, y, z);
+            map.add(object);
+            mapColliders.push({
+                name,
+                min: { x: x - width / 2, y: 0, z: z - depth / 2 },
+                max: { x: x + width / 2, y: height, z: z + depth / 2 },
+                solid: true,
+            });
+            return object;
+        };
+        addSolid("mid-wall", -15, 2, -5, 2, 4, 24, coverMaterial);
+        addSolid("site-wall", 20, 2, 18, 22, 4, 2, coverMaterial);
+        addSolid("crate-a", -8, 1.5, 14, 3, 3, 3, crateMaterial);
+        addSolid("crate-b", 10, 1.5, -15, 3, 3, 3, crateMaterial);
+        addSolid("crate-c", 13.2, 1.5, -15, 3, 3, 3, crateMaterial);
+
         const ambientLight = new THREE.HemisphereLight(0xffe4b0, 0x6e5a42, 1.2);
         ambientLight.name = "de_dust2-ambient-light";
         const sunLight = new THREE.DirectionalLight(0xffd294, 1.1);
@@ -239,7 +261,17 @@
         sunLight.position.set(-25, 45, 20);
         map.add(ambientLight, sunLight);
 
-        const spawn = Object.freeze({ x: 0, y: PLAYER_HEIGHT, z: 0, yaw: 0 });
+        const spawns = Object.freeze({
+            ct: Object.freeze({ x: -38, y: PLAYER_HEIGHT, z: 35, yaw: Math.PI }),
+            tr: Object.freeze({ x: 38, y: PLAYER_HEIGHT, z: -35, yaw: 0 }),
+            dm: Object.freeze([
+                Object.freeze({ x: -35, y: PLAYER_HEIGHT, z: -30, yaw: 0 }),
+                Object.freeze({ x: 32, y: PLAYER_HEIGHT, z: 30, yaw: Math.PI }),
+                Object.freeze({ x: 0, y: PLAYER_HEIGHT, z: 28, yaw: Math.PI }),
+                Object.freeze({ x: 28, y: PLAYER_HEIGHT, z: 0, yaw: -Math.PI / 2 }),
+            ]),
+        });
+        const spawn = context.gameMode === "dm" ? spawns.dm[0] : spawns.ct;
         if (Array.isArray(context.colliders)) context.colliders.push(...mapColliders);
         if (Array.isArray(context.wallObjects)) context.wallObjects.push(...map.children.filter((object) => object.isMesh && object !== floor));
 
@@ -249,6 +281,7 @@
             group: map,
             floor,
             spawn,
+            spawns,
             bounds: BOUNDS,
             colliders: mapColliders,
             dispose() {
@@ -256,9 +289,21 @@
                 boundaryGeometry.dispose();
                 floorMaterial.dispose();
                 boundaryMaterial.dispose();
+                coverMaterial.dispose();
+                crateMaterial.dispose();
+                map.traverse((object) => {
+                    if (object.isMesh && object !== floor && object.geometry !== boundaryGeometry) object.geometry.dispose();
+                });
             },
         };
     }
+
+    const MAPS = Object.freeze({
+        de_dust2: Object.freeze({
+            name: "de_dust2",
+            build: buildDust2Map,
+        }),
+    });
 
     // Estado do jogo: criado uma única vez e compatível com abertura direta por file://.
     let initializationStage = "carregar Three.js";
@@ -269,10 +314,11 @@
     let currentGameMap = null;
     const colliders = [];
     const wallObjects = [];
-    const GAME_STATES = Object.freeze({ MENU: "MENU", CONTAGEM_REGRESSIVA: "CONTAGEM_REGRESSIVA", JOGANDO: "JOGANDO", ERRO: "ERRO" });
+    const GAME_STATES = Object.freeze({ MENU: "MENU", CARREGANDO: "CARREGANDO", CONTAGEM_REGRESSIVA: "CONTAGEM_REGRESSIVA", JOGANDO: "JOGANDO", ERRO: "ERRO" });
     let gameState = GAME_STATES.MENU;
     let controlsEnabled = false;
     let currentMatchOptions = null;
+    let selectedMap = MAP_ID;
     let countdownTimer = null;
 
     function setGameState(nextState) {
@@ -284,8 +330,9 @@
     function showFatalError(error, involvedFunction, stage) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[${stage || initializationStage}] ${involvedFunction || "inicialização"}:`, error);
-        document.getElementById("error-title").textContent = "Erro ao carregar o mapa de_dust2";
-        document.getElementById("error-message").textContent = "Erro ao carregar o mapa de_dust2";
+        const mapErrorMessage = `Erro ao carregar mapa ${selectedMap || MAP_ID}`;
+        document.getElementById("error-title").textContent = mapErrorMessage;
+        document.getElementById("error-message").textContent = `${mapErrorMessage}: ${message}`;
         setGameState(GAME_STATES.ERRO);
         document.getElementById("error-function").textContent = involvedFunction || "inicialização";
         document.getElementById("error-stage").textContent = stage || initializationStage;
@@ -312,6 +359,45 @@
         if (countdownTimer) window.clearTimeout(countdownTimer);
         countdownTimer = null;
         controlsEnabled = false;
+        window.controlsEnabled = false;
+    }
+
+    async function loadSelectedMap() {
+        const mapId = selectedMap;
+        const loadingMessage = `Carregando mapa ${mapId}...`;
+        console.info(loadingMessage);
+        showToast(loadingMessage);
+        clearCurrentMap();
+
+        const mapDefinition = MAPS[mapId];
+        if (!mapDefinition || typeof mapDefinition.build !== "function") {
+            const error = new Error(`Mapa não encontrado: ${mapId}`);
+            console.error(`Erro ao carregar mapa ${mapId}`, error);
+            showToast(`Erro ao carregar mapa ${mapId}`);
+            throw error;
+        }
+
+        try {
+            initializationStage = `construir mapa com ${mapDefinition.build.name || "build"}`;
+            const builtMap = await Promise.resolve(mapDefinition.build({
+                THREE, scene, mapGroup, colliders, wallObjects, gameMode: currentMatchOptions?.mode,
+            }));
+            initializationStage = "validar mapa e chão na scene";
+            validateDust2Map(builtMap);
+            if (!scene.children.includes(mapGroup) || builtMap.group !== mapGroup) {
+                throw new Error("O mapa criado não foi adicionado à scene.");
+            }
+            currentGameMap = builtMap;
+            window.currentGameMap = builtMap;
+            console.info(`Mapa ${mapId} carregado`);
+            showToast(`Mapa ${mapId} carregado`);
+            return { success: true, map: builtMap };
+        } catch (error) {
+            clearCurrentMap();
+            console.error(`Erro ao carregar mapa ${mapId}`, error);
+            showToast(`Erro ao carregar mapa ${mapId}`);
+            throw error;
+        }
     }
 
     function initializeThreeRuntime() {
@@ -418,7 +504,7 @@
         }, 3000);
     }
 
-    document.getElementById("game-form").addEventListener("submit", (event) => {
+    document.getElementById("game-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const startButton = event.currentTarget.querySelector('[type="submit"]');
         startButton.disabled = true;
@@ -428,14 +514,15 @@
 
             initializationStage = "salvar opções escolhidas";
             saveMatchOptions();
+            selectedMap = currentMatchOptions.map;
+            window.selectedMap = selectedMap;
             initializationStage = "esconder menu";
             closeWindows();
             document.getElementById("menu-overlay").hidden = true;
-            clearCurrentMap();
+            setGameState(GAME_STATES.CARREGANDO);
 
-            initializationStage = "construir mapa com buildDust2Map";
-            const builtMap = buildDust2Map({ THREE, scene, mapGroup, colliders, wallObjects });
-            initializationStage = "validar mapa e chão na scene";
+            const result = await loadSelectedMap();
+            const builtMap = result.map;
             const spawn = validateDust2Map(builtMap);
 
             initializationStage = "definir spawn do jogador";
@@ -447,13 +534,11 @@
             releaseControls();
 
             initializationStage = "iniciar partida";
-            currentGameMap = builtMap;
-            window.currentGameMap = builtMap;
             beginMatch();
-            window.dispatchEvent(new CustomEvent("game-map-ready", { detail: { id: MAP_ID, map: builtMap } }));
+            window.dispatchEvent(new CustomEvent("game-map-ready", { detail: { id: selectedMap, map: builtMap } }));
         } catch (error) {
             document.getElementById("menu-overlay").hidden = false;
-            showFatalError(error, "buildDust2Map", initializationStage);
+            showFatalError(error, "loadSelectedMap", initializationStage);
         } finally {
             startButton.disabled = false;
             startButton.textContent = "Iniciar partida";
