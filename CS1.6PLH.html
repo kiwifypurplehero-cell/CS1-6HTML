@@ -20,6 +20,7 @@
                 repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.012) 4px);
         }
         #menu-overlay::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(214,161,72,.06), transparent 35%); }
+        #menu-overlay[hidden] { display: none; }
         .menu-home { position: relative; width: min(250px, 75vw); animation: rise .35s ease-out; }
         .brand { margin-bottom: 18px; color: var(--gold); font-family: Impact, sans-serif; font-size: clamp(27px, 4vw, 38px); letter-spacing: 3px; text-shadow: 2px 2px #000; }
         .main-nav { display: grid; gap: 5px; }
@@ -257,12 +258,36 @@
             dm:[[-50,-50,0],[-37,-28,1],[40,-27,3],[0,26,0],[-8,9,2],[25,12,3],[50,10,2],[-45,25,1],[12,-27,0],[31,45,3]]
         };
         const normalized={}; Object.entries(spawns).forEach(([k,list])=>normalized[k]=list.map(([x,z,yaw])=>({x,y:PLAYER_HEIGHT,z,yaw})));
-        map.add(new THREE.HemisphereLight(0xffe5b5,0x665748,1.6)); const sun=new THREE.DirectionalLight(0xffd79c,1.4); sun.position.set(-30,55,25); map.add(sun);
         map.userData.materials=materials;
         currentGameMap={id:MAP_ID,group:map,spawns:normalized,bounds:BOUNDS}; return currentGameMap;
     }
 
-    function clearCurrentMap() { controlsEnabled=false; colliders.length=0; wallObjects.length=0; if(mapGroup){mapGroup.traverse(o=>{if(o.isMesh){o.geometry.dispose(); if(o.material&&!Object.values(mapGroup.userData.materials||{}).includes(o.material))o.material.dispose();}}); while(mapGroup.children.length)mapGroup.remove(mapGroup.children[0]); mapGroup.userData={};} currentGameMap=null; }
+    // Registro interno de mapas. O menu guarda somente esta chave; nenhum arquivo e carregado.
+    const MAPS = Object.freeze({
+        de_dust2: Object.freeze({
+            name: "de_dust2",
+            build: buildDust2Map
+        })
+    });
+
+    function clearCurrentMap() {
+        controlsEnabled=false;
+        colliders.length=0;
+        wallObjects.length=0;
+        if(mapGroup){
+            const materials=new Set();
+            mapGroup.traverse(object=>{
+                if(!object.isMesh)return;
+                object.geometry?.dispose();
+                (Array.isArray(object.material)?object.material:[object.material]).forEach(material=>material&&materials.add(material));
+            });
+            materials.forEach(material=>material.dispose());
+            mapGroup.clear();
+            mapGroup.userData={};
+            mapGroup.name="";
+        }
+        currentGameMap=null;
+    }
     function safeSpawn() { const mode=currentMatchOptions.mode; const team=currentMatchOptions.team; const list=mode==="dm"?currentGameMap.spawns.dm:currentGameMap.spawns[team]; return list[Math.floor(Math.random()*list.length)]; }
     function collidesAt(x,y,z) { const box=new THREE.Box3(new THREE.Vector3(x-PLAYER_RADIUS,y-PLAYER_HEIGHT,z-PLAYER_RADIUS),new THREE.Vector3(x+PLAYER_RADIUS,y-.1,z+PLAYER_RADIUS)); return colliders.some(c=>c.intersectsBox(box)); }
     function placePlayer() { const s=safeSpawn(); if(collidesAt(s.x,s.y,s.z)) throw new Error("Spawn selecionado está dentro de um objeto"); player.position.set(s.x,s.y,s.z); player.velocity.set(0,0,0); player.yaw=s.yaw; player.pitch=0; player.grounded=true; updateCamera(); window.player=player; }
@@ -272,19 +297,28 @@
     function openPauseMenu() { if(gameState!==GAME_STATES.JOGANDO)return; controlsEnabled=false; document.exitPointerLock?.(); document.getElementById("menu-overlay").hidden=false; showToast("Jogo pausado — feche o menu para continuar"); }
     function resumeMatch() { if(gameState===GAME_STATES.JOGANDO){document.getElementById("menu-overlay").hidden=true;controlsEnabled=true;} }
 
-    async function startMatch() {
+    function startMatch() {
         let loading=document.getElementById("loading-overlay"); const menu=document.getElementById("menu-overlay"); if(!loading){loading=document.createElement("div");loading.id="loading-overlay";loading.innerHTML="<span>Carregando de_dust2…</span>";document.getElementById("game-container").append(loading);}
         try {
             setGameState(GAME_STATES.CARREGANDO); loading.classList.add("open"); closeWindows(); menu.hidden=true;
-            await new Promise(r=>setTimeout(r,700));
-            clearCurrentMap(); buildDust2Map();
+            selectedMap=document.getElementById("map").value;
+            console.log(`Mapa selecionado: ${selectedMap}`);
+            const mapDefinition=MAPS[selectedMap];
+            if(!mapDefinition) throw new Error(`Mapa nao encontrado: ${selectedMap}`);
+            clearCurrentMap();
+            console.log("Executando buildDust2Map");
+            mapDefinition.build();
             if(!mapGroup || mapGroup.children.length===0) throw new Error("Erro ao carregar o mapa de_dust2");
-            placePlayer(); camera.fov=Number(document.getElementById("camera-fov").value); camera.updateProjectionMatrix(); updateCamera(); updateHUD(); releaseControls();
+            console.log("Mapa criado com sucesso");
+            placePlayer();
+            console.log("Jogador posicionado");
+            camera.fov=Number(document.getElementById("camera-fov").value); camera.updateProjectionMatrix(); updateCamera(); updateHUD(); releaseControls();
             setGameState(GAME_STATES.JOGANDO); loading.classList.remove("open"); loading.remove();
+            console.log("Partida iniciada");
             lastFrame=performance.now(); window.dispatchEvent(new CustomEvent("game-map-ready",{detail:{map:currentGameMap}}));
         } catch(error) {
             loading.classList.remove("open"); clearCurrentMap(); document.getElementById("hud").classList.remove("visible"); menu.hidden=false; setGameState(GAME_STATES.ERRO);
-            document.getElementById("error-title").textContent="Erro ao carregar o mapa de_dust2"; document.getElementById("error-message").textContent=error.message; document.getElementById("error-function").textContent="startMatch"; document.getElementById("error-stage").textContent="criar mapa e jogador"; document.getElementById("error-overlay").classList.add("open"); console.error(error);
+            document.getElementById("error-title").textContent=`Erro ao iniciar ${selectedMap}`; document.getElementById("error-message").textContent=`Erro ao iniciar ${selectedMap}`; document.getElementById("error-function").textContent="startMatch"; document.getElementById("error-stage").textContent=error.message; document.getElementById("error-overlay").classList.add("open"); console.error(error);
         }
     }
     window.startMatch=startMatch; window.buildDust2Map=buildDust2Map; window.clearCurrentMap=clearCurrentMap;
@@ -301,7 +335,7 @@
         updateCamera();
     }
     function animate(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;updatePlayer(dt);renderer.render(scene,camera);requestAnimationFrame(animate);}
-    function initializeThreeRuntime(){if(typeof THREE==="undefined")throw new Error("Three.js não pôde ser carregado");scene=new THREE.Scene();scene.background=new THREE.Color(0x8bb0c1);scene.fog=new THREE.Fog(0x8bb0c1,85,165);camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,250);renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.domElement.id="game-canvas";document.getElementById("game-container").prepend(renderer.domElement);mapGroup=new THREE.Group();scene.add(mapGroup);player.position=new THREE.Vector3(0,PLAYER_HEIGHT,0);player.velocity=new THREE.Vector3();addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});requestAnimationFrame(animate);}
+    function initializeThreeRuntime(){if(typeof THREE==="undefined")throw new Error("Three.js não pôde ser carregado");scene=new THREE.Scene();scene.background=new THREE.Color(0x8bb0c1);scene.fog=new THREE.Fog(0x8bb0c1,85,165);camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,250);renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.domElement.id="game-canvas";document.getElementById("game-container").prepend(renderer.domElement);mapGroup=new THREE.Group();scene.add(mapGroup);scene.add(new THREE.HemisphereLight(0xffe5b5,0x665748,1.6));const sun=new THREE.DirectionalLight(0xffd79c,1.4);sun.position.set(-30,55,25);scene.add(sun);player.position=new THREE.Vector3(0,PLAYER_HEIGHT,0);player.velocity=new THREE.Vector3();updateCamera();addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});requestAnimationFrame(animate);}
 
     document.querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>{closeWindows();document.getElementById(b.dataset.open).classList.add("open")}));
     document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{closeWindows();resumeMatch()}));
