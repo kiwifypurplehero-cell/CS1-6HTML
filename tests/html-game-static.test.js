@@ -1,0 +1,11 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const html = fs.readFileSync("CS1.6PLH.html", "utf8");
+assert.match(html, /PROCURAR SERVIDOR/);
+assert.match(html, /Em manutenção/);
+assert.match(html, /function setFirstPersonVisible\(visible\)/);
+assert.match(html, /requestFullscreen/);
+assert.match(html, /orientation\.lock\("landscape"\)/);
+const removed = ["Web" + "Socket", "RTCPeer" + "Connection", "create" + "_room", "room" + "_created"];
+for (const term of removed) assert.ok(!html.includes(term), `${term} ainda existe`);
+console.log("Validação estática concluída.");
