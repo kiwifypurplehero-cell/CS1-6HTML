@@ -20,6 +20,10 @@ async function main(){
   const joined = await wait(guest, m => m.type === 'room_joined'); assert.equal(joined.hostId, created.playerId);
   const hostList = await wait(host, m => m.type === 'player_list' && m.players.length === 2); assert.deepEqual(hostList.players.map(p => p.name).sort(), ['Guest','Host']);
   const guestList = await wait(guest, m => m.type === 'player_list' && m.players.length === 2); assert.equal(guestList.minPlayers, 2);
+  send(host, { type: 'offer', roomCode: created.roomCode, to: joined.playerId, description: { type: 'offer', sdp: 'fake' } }); assert.equal((await wait(guest, m => m.type === 'offer')).from, created.playerId);
+  send(guest, { type: 'answer', roomCode: created.roomCode, to: created.playerId, description: { type: 'answer', sdp: 'fake' } }); assert.equal((await wait(host, m => m.type === 'answer')).from, joined.playerId);
+  send(guest, { type: 'ice_candidate', roomCode: created.roomCode, to: created.playerId, candidate: { candidate: 'candidate:1 1 udp 1 0.0.0.0 9 typ relay' } }); assert.equal((await wait(host, m => m.type === 'ice_candidate')).from, joined.playerId);
+  send(host, { type: 'ping' }); assert.equal((await wait(host, m => m.type === 'pong')).type, 'pong');
   send(host, { type: 'start_match' }); assert.equal((await wait(host, m => m.type === 'start_match')).roomCode, created.roomCode); assert.equal((await wait(guest, m => m.type === 'start_match')).roomCode, created.roomCode);
   const full = await open(url); send(full,{type:'join_room', roomCode:created.roomCode, version:'cs16plh-mp-1'}); assert.equal((await wait(full, m => m.type === 'room_error')).code, 'ROOM_FULL');
   const invalid = await open(url); send(invalid,{type:'join_room', roomCode:'NOPE99', version:'cs16plh-mp-1'}); assert.equal((await wait(invalid, m => m.type === 'room_error')).code, 'ROOM_NOT_FOUND');
