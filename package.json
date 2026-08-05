@@ -1,7 +1,6 @@
 {
   "scripts": {
-    "signaling": "node signaling/server.js",
-    "test": "node tests/signaling-flow.test.js && node tests/html-multiplayer-static.test.js"
+    "test": "node tests/html-game-static.test.js"
   },
   "dependencies": {},
   "devDependencies": {}
