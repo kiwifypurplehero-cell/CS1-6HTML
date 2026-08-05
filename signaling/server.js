@@ -2,6 +2,7 @@
 const http = require('http');
 const crypto = require('crypto');
 const PORT = Number(process.env.PORT || 8080);
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '*').split(',').map(o => o.trim()).filter(Boolean);
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const OPEN = 1;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -44,9 +45,11 @@ function leaveRoom(ws, notify = true) {
   if (room.players.size === 0) rooms.delete(room.code); else if (notify) sendPlayerList(room);
 }
 function roomError(ws, code, message, roomCode = ws.roomCode) { send(ws, { type: 'room_error', code, message, roomCode }); }
+function relay(room, ws, msg, type = msg.type) { const target = room.players.get(msg.to); if (target) send(target, { type, roomCode: room.code, from: ws.id, description: msg.description, candidate: msg.candidate, signalType: msg.signalType }); else roomError(ws, 'PLAYER_NOT_FOUND', 'Jogador não encontrado', room.code); }
 function handleMessage(ws, raw) {
   let msg; try { msg = JSON.parse(raw); } catch { return roomError(ws, 'BAD_JSON', 'JSON inválido'); }
   if (msg.type === 'hello') return send(ws, { type: 'hello', playerId: ws.id, protocol: 'cs16plh-signaling-v2' });
+  if (msg.type === 'ping') return send(ws, { type: 'pong', time: Date.now() });
   if (msg.type === 'create_room') {
     try {
       const settings = msg.settings || msg.options || {};
@@ -78,11 +81,14 @@ function handleMessage(ws, raw) {
   if (msg.type === 'leave_room') { leaveRoom(ws); return send(ws, { type: 'room_left' }); }
   const room = rooms.get(msg.roomCode || ws.roomCode); if (!room) return roomError(ws, 'ROOM_NOT_FOUND', 'Sala inexistente', msg.roomCode);
   if (msg.type === 'start_match') { if (ws.id !== room.hostId) return roomError(ws, 'NOT_HOST', 'Apenas o host pode iniciar', room.code); if (room.players.size < room.minPlayers) return roomError(ws, 'NOT_ENOUGH_PLAYERS', 'A sala exige pelo menos dois jogadores', room.code); return broadcast(room, { type: 'start_match', roomCode: room.code, options: room.settings }); }
-  if (msg.type === 'signal') { const target = room.players.get(msg.to); if (target) send(target, { type: 'signal', roomCode: room.code, from: ws.id, signalType: msg.signalType, description: msg.description, candidate: msg.candidate }); }
+  if (msg.type === 'offer' || msg.type === 'answer' || msg.type === 'ice_candidate') return relay(room, ws, msg);
+  if (msg.type === 'signal') return relay(room, ws, msg, 'signal');
 }
 function handleClose(ws) { clients.delete(ws); leaveRoom(ws); }
-const server = http.createServer((req,res)=>{ res.writeHead(200, {'content-type':'application/json'}); res.end(JSON.stringify({ok:true, port:PORT, rooms:rooms.size, protocol:'cs16plh-signaling-v2'})); });
+const server = http.createServer((req,res)=>{ res.writeHead(200, {'content-type':'application/json','access-control-allow-origin': ALLOWED_ORIGINS.includes('*') ? '*' : (ALLOWED_ORIGINS[0] || '*')}); res.end(JSON.stringify({ok:true, port:PORT, rooms:rooms.size, protocol:'cs16plh-signaling-v2'})); });
 server.on('upgrade', (req, socket) => {
+  const origin = req.headers.origin || '';
+  if (!ALLOWED_ORIGINS.includes('*') && origin && !ALLOWED_ORIGINS.includes(origin)) return socket.destroy();
   if ((req.headers.upgrade || '').toLowerCase() !== 'websocket') return socket.destroy();
   const accept = crypto.createHash('sha1').update(req.headers['sec-websocket-key'] + GUID).digest('base64');
   socket.write(['HTTP/1.1 101 Switching Protocols','Upgrade: websocket','Connection: Upgrade',`Sec-WebSocket-Accept: ${accept}`,'',''].join('\r\n'));
@@ -90,5 +96,5 @@ server.on('upgrade', (req, socket) => {
   clients.add(ws); send(ws, { type: 'hello', playerId: ws.id, protocol: 'cs16plh-signaling-v2' });
   socket.on('data', chunk => decodeFrames(ws, chunk, raw => handleMessage(ws, raw))); socket.on('close', () => handleClose(ws)); socket.on('error', err => { console.error('WebSocket client error:', err.message); handleClose(ws); });
 });
-if (require.main === module) server.listen(PORT, () => console.log(`CS1.6PLH signaling ws://0.0.0.0:${PORT}`));
+if (require.main === module) server.listen(PORT, () => console.log(`CS1.6PLH signaling listening on port ${PORT}; use wss://SEU_DOMINIO in production behind HTTPS`));
 module.exports = { server, rooms };
