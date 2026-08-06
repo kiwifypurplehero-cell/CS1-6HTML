@@ -454,7 +454,7 @@
         camera.add(firstPersonGroup);
         const sleeve=new THREE.MeshStandardMaterial({color:0x3d4b39,roughness:.9}), metal=new THREE.MeshStandardMaterial({color:0xbfc7c9,roughness:.48,metalness:.18}), grip=new THREE.MeshStandardMaterial({color:0x151515,roughness:.9});
         // Silhueta intencionalmente minima: cada braco e exatamente um paralelepipedo.
-        const makeArm=name=>{ const arm=new THREE.Mesh(new THREE.BoxGeometry(.22,.22,.78),sleeve); arm.name=name; markShadowObject(arm,{cast:true,receive:true}); return arm; };
+        const makeArm=name=>{ const arm=new THREE.Mesh(new THREE.BoxGeometry(.12,.13,.56),sleeve); arm.name=name; markShadowObject(arm,{cast:true,receive:true}); return arm; };
         leftArm=makeArm("leftArm"); rightArm=makeArm("rightArm"); firstPersonGroup.add(leftArm,rightArm);
         knifeGroup=new THREE.Group(); knifeGroup.name="knifeGroup";
         const handle=new THREE.Mesh(new THREE.BoxGeometry(.075,.075,.26),grip); handle.position.set(0,0,-.08);
@@ -471,23 +471,23 @@
         mainHand=mode==="left"?"left":"right"; localStorage.setItem("cs16plh-main-hand",mainHand); if(!firstPersonGroup||!leftArm||!rightArm||!knifeGroup)return;
         // Canhoto troca coordenadas, nunca inverte geometria com escala negativa.
         const side=mainHand==="right"?1:-1;
-        firstPersonGroup.position.set(0,-.205,-.34); firstPersonGroup.rotation.set(0,0,0); firstPersonGroup.scale.set(1,1,1);
-        rightArm.position.set(.255*side,-.055,-.18); rightArm.rotation.set(-.58,-.12*side,-.08*side);
-        leftArm.position.set(-.245*side,-.115,-.23); leftArm.rotation.set(-.48,.14*side,.09*side);
-        knifeGroup.position.set(.12*side,.035,-.34); knifeGroup.rotation.set(-.67,-.18*side,-.13*side);
+        firstPersonGroup.position.set(0,-.30,-.26); firstPersonGroup.rotation.set(0,0,0); firstPersonGroup.scale.set(.55,.55,.55);
+        rightArm.position.set(.31*side,-.10,-.18); rightArm.rotation.set(-.72,-.10*side,-.18*side);
+        leftArm.position.set(-.22*side,-.18,-.28); leftArm.rotation.set(-.58,.18*side,.13*side);
+        knifeGroup.position.set(.22*side,.02,-.30); knifeGroup.rotation.set(-.58,-.20*side,-.16*side); knifeGroup.scale.set(1.15,1.15,1.15);
     }
     function animateFirstPerson(dt,moveSpeed){
         if(!firstPersonGroup)return;
         const moving=moveSpeed>.1, running=moving&&(keys.ShiftLeft||keys.ShiftRight), side=mainHand==="right"?1:-1;
         fpBobTime+=dt*(moving?(running?9:6):1.8); recoilKick=Math.max(0,recoilKick-dt*3.8); reloadMotion=Math.max(0,reloadMotion-dt*2.4); switchMotion=Math.max(0,switchMotion-dt*2.8);
-        const amp=moving?(running?.007:.004):.0015, wave=Math.sin(fpBobTime), lift=Math.cos(fpBobTime*2)*amp;
-        firstPersonGroup.position.set(wave*amp,-.205+lift-reloadMotion*.018-switchMotion*.018,-.34+switchMotion*.025);
+        const amp=moving?(running?.004:.0025):.0008, wave=Math.sin(fpBobTime), lift=Math.cos(fpBobTime*2)*amp;
+        firstPersonGroup.position.set(wave*amp,-.30+lift-reloadMotion*.018-switchMotion*.018,-.26+switchMotion*.025);
         firstPersonGroup.rotation.set(0,0,wave*amp*.45);
         // O golpe pertence somente ao braco dominante; o bloco de apoio mantem sua pose.
-        rightArm.rotation.set(-.58-(mainHand==="right"?recoilKick*.75:0),-.12*side,-.08*side);
-        leftArm.rotation.set(-.48-(mainHand==="left"?recoilKick*.75:0),.14*side,.09*side);
-        knifeGroup.rotation.set(-.67-recoilKick*.9+reloadMotion*.12,-.18*side,-.13*side);
-        knifeGroup.position.set(.12*side+wave*amp*.35,.035+lift*.5-recoilKick*.025,-.34+recoilKick*.055);
+        rightArm.rotation.set(-.72-(mainHand==="right"?recoilKick*.75:0),-.10*side,-.18*side);
+        leftArm.rotation.set(-.58-(mainHand==="left"?recoilKick*.75:0),.18*side,.13*side);
+        knifeGroup.rotation.set(-.58-recoilKick*.9+reloadMotion*.12,-.20*side,-.16*side);
+        knifeGroup.position.set(.22*side+wave*amp*.35,.02+lift*.5-recoilKick*.025,-.30+recoilKick*.055);
         setFirstPersonVisible(firstPersonRequestedVisible);
     }
 
