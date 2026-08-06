@@ -229,7 +229,7 @@
     const GAME_STATES = Object.freeze({ MENU:"MENU", CARREGANDO:"CARREGANDO", JOGANDO:"JOGANDO", ERRO:"ERRO" });
     let scene, camera, renderer, mapGroup, currentGameMap, currentMatchOptions, selectedMap = MAP_ID;
     let currentFov = 75, graphicsQuality = "Média", shadowsEnabled = true, currentTimeOfDay = "midday";
-    let ambientLight, sunLight, firstPersonGroup, knifeGroup, leftArm, rightArm, mainHand = localStorage.getItem("cs16plh-main-hand") || "right", fpBobTime = 0, recoilKick = 0, reloadMotion = 0, switchMotion = 0;
+    let ambientLight, sunLight, firstPersonGroup, knifeGroup, leftArm, rightArm, mainHand = localStorage.getItem("cs16plh-main-hand") || "right", fpBobTime = 0, recoilKick = 0, reloadMotion = 0, switchMotion = 0, firstPersonRequestedVisible = false;
     const shadowCasters = new Set(), shadowReceivers = new Set(), nightLights = [];
     let gameState = GAME_STATES.MENU, controlsEnabled = false, pauseOpen = false, lastFrame = performance.now();
     const colliders = [], walkableSurfaces = [], wallObjects = [], keys = Object.create(null);
@@ -453,7 +453,8 @@
         firstPersonGroup.name="firstPersonGroup";
         camera.add(firstPersonGroup);
         const sleeve=new THREE.MeshStandardMaterial({color:0x3d4b39,roughness:.9}), metal=new THREE.MeshStandardMaterial({color:0xbfc7c9,roughness:.48,metalness:.18}), grip=new THREE.MeshStandardMaterial({color:0x151515,roughness:.9});
-        const makeArm=name=>{ const g=new THREE.Group(); g.name=name; const m=new THREE.Mesh(new THREE.BoxGeometry(.16,.16,.58),sleeve); m.position.set(0,0,0); m.rotation.x=-.18; g.add(m); markShadowObject(m,{cast:true,receive:true}); return g; };
+        // Silhueta intencionalmente minima: cada braco e exatamente um paralelepipedo.
+        const makeArm=name=>{ const arm=new THREE.Mesh(new THREE.BoxGeometry(.22,.22,.78),sleeve); arm.name=name; markShadowObject(arm,{cast:true,receive:true}); return arm; };
         leftArm=makeArm("leftArm"); rightArm=makeArm("rightArm"); firstPersonGroup.add(leftArm,rightArm);
         knifeGroup=new THREE.Group(); knifeGroup.name="knifeGroup";
         const handle=new THREE.Mesh(new THREE.BoxGeometry(.075,.075,.26),grip); handle.position.set(0,0,-.08);
@@ -462,15 +463,33 @@
         knifeGroup.add(handle,blade,guard); firstPersonGroup.add(knifeGroup); [handle,blade,guard].forEach(m=>markShadowObject(m,{cast:true,receive:true}));
         applyHandedness(mainHand); setFirstPersonVisible(false);
     }
-    function setFirstPersonVisible(visible){ if(firstPersonGroup) firstPersonGroup.visible=!!visible&&gameState===GAME_STATES.JOGANDO&&player.health>0&&!pauseOpen; }
+    function setFirstPersonVisible(visible){
+        firstPersonRequestedVisible=!!visible;
+        if(firstPersonGroup)firstPersonGroup.visible=firstPersonRequestedVisible&&gameState===GAME_STATES.JOGANDO&&player.health>0&&!pauseOpen&&!window.cinematicCameraActive&&!window.spectatorMode;
+    }
     function applyHandedness(mode){
         mainHand=mode==="left"?"left":"right"; localStorage.setItem("cs16plh-main-hand",mainHand); if(!firstPersonGroup||!leftArm||!rightArm||!knifeGroup)return;
-        const right=mainHand==="right"; firstPersonGroup.position.set(0,-.33,-.86); firstPersonGroup.rotation.set(0,0,0);
-        rightArm.position.set(right?.34:-.34,-.12,-.34); rightArm.rotation.set(-.42,right?-.16:.16,right?-.08:.08);
-        leftArm.position.set(right?-.28:.28,-.19,-.52); leftArm.rotation.set(-.32,right?.2:-.2,right?.1:-.1);
-        knifeGroup.position.set(right?.42:-.42,-.08,-.68); knifeGroup.rotation.set(-.55,right?-.12:.12,right?-.08:.08);
+        // Canhoto troca coordenadas, nunca inverte geometria com escala negativa.
+        const side=mainHand==="right"?1:-1;
+        firstPersonGroup.position.set(0,-.205,-.34); firstPersonGroup.rotation.set(0,0,0); firstPersonGroup.scale.set(1,1,1);
+        rightArm.position.set(.255*side,-.055,-.18); rightArm.rotation.set(-.58,-.12*side,-.08*side);
+        leftArm.position.set(-.245*side,-.115,-.23); leftArm.rotation.set(-.48,.14*side,.09*side);
+        knifeGroup.position.set(.12*side,.035,-.34); knifeGroup.rotation.set(-.67,-.18*side,-.13*side);
     }
-    function animateFirstPerson(dt,moveSpeed){if(!firstPersonGroup)return; fpBobTime+=dt*(2+moveSpeed*.9); recoilKick=Math.max(0,recoilKick-dt*5); reloadMotion=Math.max(0,reloadMotion-dt*2.4); switchMotion=Math.max(0,switchMotion-dt*2.8); const amp=moveSpeed>.1?.012+Math.min(moveSpeed/8,.018):.003; firstPersonGroup.position.x=Math.sin(fpBobTime*6)*amp; firstPersonGroup.position.y=-.33+Math.cos(fpBobTime*12)*amp-reloadMotion*.04-switchMotion*.04; firstPersonGroup.position.z=-.86+recoilKick*.08+switchMotion*.06; firstPersonGroup.rotation.z=Math.sin(fpBobTime*6)*amp*.8; knifeGroup.rotation.x=-.55-recoilKick*.18+reloadMotion*.22; leftArm.rotation.x=-.32+knifeGroup.rotation.x*.08; rightArm.rotation.x=-.42+knifeGroup.rotation.x*.08; }
+    function animateFirstPerson(dt,moveSpeed){
+        if(!firstPersonGroup)return;
+        const moving=moveSpeed>.1, running=moving&&(keys.ShiftLeft||keys.ShiftRight), side=mainHand==="right"?1:-1;
+        fpBobTime+=dt*(moving?(running?9:6):1.8); recoilKick=Math.max(0,recoilKick-dt*3.8); reloadMotion=Math.max(0,reloadMotion-dt*2.4); switchMotion=Math.max(0,switchMotion-dt*2.8);
+        const amp=moving?(running?.007:.004):.0015, wave=Math.sin(fpBobTime), lift=Math.cos(fpBobTime*2)*amp;
+        firstPersonGroup.position.set(wave*amp,-.205+lift-reloadMotion*.018-switchMotion*.018,-.34+switchMotion*.025);
+        firstPersonGroup.rotation.set(0,0,wave*amp*.45);
+        // O golpe pertence somente ao braco dominante; o bloco de apoio mantem sua pose.
+        rightArm.rotation.set(-.58-(mainHand==="right"?recoilKick*.75:0),-.12*side,-.08*side);
+        leftArm.rotation.set(-.48-(mainHand==="left"?recoilKick*.75:0),.14*side,.09*side);
+        knifeGroup.rotation.set(-.67-recoilKick*.9+reloadMotion*.12,-.18*side,-.13*side);
+        knifeGroup.position.set(.12*side+wave*amp*.35,.035+lift*.5-recoilKick*.025,-.34+recoilKick*.055);
+        setFirstPersonVisible(firstPersonRequestedVisible);
+    }
 
 
 
