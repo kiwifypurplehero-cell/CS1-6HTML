@@ -245,76 +245,47 @@
 
     function buildDust2Map() {
         if (!scene || !mapGroup) throw new Error("buildDust2Map: cena indisponível");
-        const map = mapGroup; map.name = MAP_ID;
-        const materials = {
-            sand:new THREE.MeshStandardMaterial({color:0xc9a76c,roughness:1}), wall:new THREE.MeshStandardMaterial({color:0xa98758,roughness:1}),
-            stone:new THREE.MeshStandardMaterial({color:0x796b59,roughness:1}), wood:new THREE.MeshStandardMaterial({color:0x6d4b2d,roughness:1}),
-            metal:new THREE.MeshStandardMaterial({color:0x34383a,roughness:.9}), dark:new THREE.MeshStandardMaterial({color:0x51483d,roughness:1}),
-            siteA:new THREE.MeshStandardMaterial({color:0xb85c45,roughness:1}), siteB:new THREE.MeshStandardMaterial({color:0xb99143,roughness:1})
+        const map=mapGroup; map.name=MAP_ID;
+        const boxGeometry=new THREE.BoxGeometry(1,1,1), unitCylinder=new THREE.CylinderGeometry(1,1,1,8);
+        const material=(color,roughness=1,metalness=0)=>new THREE.MeshStandardMaterial({color,roughness,metalness,flatShading:true});
+        // Paleta original, deliberadamente simples e sem texturas do jogo original.
+        const materials={
+            sand:material(0xd2b47b),sandAlt:material(0xc6a46a),stone:material(0xb79a68),stoneAlt:material(0xa8895c),
+            concrete:material(0x8f8069),wood:material(0x624329),woodAlt:material(0x795537),metal:material(0x596059,.82,.18),
+            military:material(0x59654b,.92,.05),dark:material(0x4c453b),red:material(0xa74735),white:material(0xddd1af)
         };
-        function meshBox(name,x,y,z,w,h,d,mat,solid=true) { const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); mesh.name=name; mesh.position.set(x,y+h/2,z); map.add(mesh); markShadowObject(mesh,{cast:solid||h>1,receive:true}); if(solid)addCollider(mesh); return mesh; }
-        function addWalkableRect(x,z,w,d,heightAt) { walkableSurfaces.push({x,z,halfW:w/2,halfD:d/2,heightAt}); }
-        function createFloor(name,x,z,w,d,y=0,mat=materials.sand) { const floor=meshBox(name,x,y-.15,z,w,.3,d,mat,false); markShadowObject(floor,{cast:false,receive:true}); addWalkableRect(x,z,w,d,()=>y); return floor; }
-        function createWall(name,x,z,w,d,h=5,y=0,mat=materials.wall) { return meshBox(name,x,y,z,w,h,d,mat,true); }
-        function createCrate(name,x,z,size=2.5,y=0) { return meshBox(name,x,y,z,size,size,size,materials.wood,true); }
-        function createRamp(name,x,z,w,d,height,axis="z",direction=1) { const along=axis==="x"?w:d,across=axis==="x"?d:w; const ramp=new THREE.Mesh(new THREE.BoxGeometry(across,.16,along),materials.stone); ramp.name=name; ramp.rotation.order="YXZ"; ramp.rotation.y=axis==="x"?Math.PI/2:0; ramp.rotation.x=-direction*Math.atan2(height,along); ramp.position.set(x,height/2-.08,z); map.add(ramp); markShadowObject(ramp,{cast:false,receive:true}); addWalkableRect(x,z,w,d,(px,pz)=>{const offset=axis==="x"?px-x:pz-z;return height*Math.max(0,Math.min(1,.5+direction*offset/along));}); return ramp; }
-        function createStairs(name,x,z,w,depth,height,steps=6,axis="z",direction=1) { const stepDepth=depth/steps; for(let i=0;i<steps;i++){ const level=direction>0?i+1:steps-i; const sx=x+(axis==="x"?(i-(steps-1)/2)*stepDepth:0), sz=z+(axis==="z"?(i-(steps-1)/2)*stepDepth:0); meshBox(`${name}-${i}`,sx,0,sz,axis==="x"?stepDepth:w,height*level/steps,axis==="z"?stepDepth:w,materials.stone,false); addWalkableRect(sx,sz,axis==="x"?stepDepth:w,axis==="z"?stepDepth:w,()=>height*level/steps); } }
-        function createDoorway(name,x,z,w,d,h=5,gap=4,axis="x") { const span=axis==="x"?w:d, side=(span-gap)/2; if(axis==="x"){createWall(name+"-l",x-(gap+side)/2,z,side,d,h);createWall(name+"-r",x+(gap+side)/2,z,side,d,h);}else{createWall(name+"-l",x,z-(gap+side)/2,w,side,h);createWall(name+"-r",x,z+(gap+side)/2,w,side,h);} meshBox(name+"-lintel",x,h-1,z,w,1,d,materials.stone,true); }
-        function createPillar(name,x,z,radius=1,height=5,mat=materials.stone) { const pillar=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,height,8),mat); pillar.name=name; pillar.position.set(x,height/2,z); map.add(pillar); markShadowObject(pillar,{cast:true,receive:true}); addCollider(pillar); return pillar; }
-        function createDoubleDoors(name,x,z,axis="x") { const vertical=axis==="z"; [-1,1].forEach((side,i)=>meshBox(`${name}-${i}`,x+(vertical?0:side*2.25),0,z+(vertical?side*2.25:0),vertical?.35:2.2,4.2,vertical?2.2:.35,materials.metal,true)); }
-        Object.assign(window,{createFloor,createWall,createCrate,createRamp,createStairs,createDoorway,createPillar});
-
-        // 1. Chão principal e limites: uma única base barata evita frestas e quedas.
-        createFloor("dust2-ground",0,0,120,120); createFloor("mid-stone",0,10,22,68,.01,materials.stone);
-        // 2. Spawn CT e suas três saídas (mid, B e A).
-        createWall("ct-back",0,55,42,2); createWall("ct-left",-22,47,2,18); createWall("ct-right",22,47,2,18);
-        createDoorway("ct-mid-arch",0,39,18,2,6,6,"x"); createWall("ct-a-divider",-32,42,20,2); createWall("ct-b-divider",32,42,20,2);
-        // 3. Spawn TR conectado a long, mid e túneis.
-        createWall("tr-back",29,55,52,2); createWall("tr-east",55,47,2,18); createDoorway("tr-mid-exit",18,38,2,20,6,6,"z");
-        createDoorway("tr-long-exit",-31,44,18,2,6,6,"x"); createDoorway("tr-tunnel-exit",39,38,18,2,6,6,"x");
-        // 4. Mid amplo, com top mid, suicide e acesso inferior.
-        createWall("mid-west",-12,14,2,46); createWall("mid-east",12,13,2,34); createWall("top-mid-west",-5,35,12,2); createWall("top-mid-east",8,31,2,10);
-        createCrate("top-mid-cover",5,27,2.8); createPillar("mid-pillar",-8,-3,.8,5);
-        // 5. Portas do meio com abertura de seis metros e folhas abertas.
-        createDoorway("mid-door-frame",0,-8,26,2,6,6,"x"); createDoubleDoors("mid-double-doors",0,-7,"x");
-        createWall("mid-b-split",13,-15,18,2); createDoorway("ct-mid-return",6,29,2,14,6,5,"z");
-        // 6. Long A: pit, curva, corredor largo e portão duplo.
-        createWall("long-outer",-54,0,2,78); createWall("long-inner",-43,7,2,49); createWall("long-corner",-47,-39,14,2);
-        createDoorway("long-a-frame",-48,25,12,2,6,5,"x"); createDoubleDoors("long-a-doors",-48,24,"x");
-        createWall("pit-back",-50,-31,8,2,3); createCrate("pit-cover",-50,-25,3); createRamp("pit-ramp",-47,-22,6,9,1.2);
-        // 7. Short A e catwalk, deixando uma rota contínua ao lado da elevação visual.
-        createWall("short-south",-21,-12,19,2,4); createWall("short-north",-22,-3,22,2,4); createDoorway("short-mid-entry",-11,-7,2,11,5,5,"z");
-        createFloor("catwalk",-29,-8,13,7,1.2,materials.stone); createStairs("short-stairs",-27,-15,6,7,1.2,6,"z",1); createRamp("catwalk-ramp",-35,-15,5,8,1.2);
-        // 8. Bombsite A, plataforma, goose e saídas para short/long/CT.
-        createFloor("bombsite-a",-34,-31,20,18,.02,materials.siteA); createWall("a-north",-33,-43,25,2); createWall("a-east",-22,-35,2,17);
-        createWall("a-goose",-27,-39,8,2,4); createCrate("a-default",-36,-33,3); createCrate("a-triple-1",-29,-29,2.7); createCrate("a-triple-2",-29,-26,2.7);
-        // 9. Túneis superiores: salão escuro com acesso ao B e ao spawn TR.
-        createFloor("upper-tunnels",35,13,31,19,.02,materials.dark); createWall("upper-tunnel-west",20,15,2,24,5,0,materials.dark); createWall("upper-tunnel-east",51,13,2,28,5,0,materials.dark);
-        createWall("upper-tunnel-north",36,1,32,2,5,0,materials.dark); createDoorway("upper-tunnel-south",36,24,30,2,5,6,"x"); createPillar("upper-tunnel-pillar",35,12,1,5,materials.dark);
-        // 10. Túneis inferiores e escada lateral rumo ao upper tunnel.
-        createFloor("lower-tunnels",24,-2,24,9,.01,materials.dark); createWall("lower-north",25,-7,25,2,4,0,materials.dark); createWall("lower-south",26,3,28,2,4,0,materials.dark);
-        createDoorway("lower-mid-exit",13,-2,2,12,5,5,"z"); createStairs("tunnel-stairs",42,1,6,8,1.1,6,"z",-1); createRamp("lower-tunnel-ramp",39,-3,5,7,1.1,"z",-1);
-        // 11. Entrada e área externa do B, com portas largas e rota CT alternativa.
-        createWall("b-approach-north",25,-18,26,2); createWall("b-approach-south",25,-10,22,2); createDoorway("b-tunnel-gate",37,-14,2,12,5,5,"z");
-        createDoubleDoors("b-double-doors",37,-14,"z"); createWall("b-ct-corridor",45,28,2,24); createDoorway("b-ct-door",45,16,12,2,5,5,"x");
-        createCrate("b-outside-cover",30,-13,2.7);
-        // 12. Bombsite B, plataforma traseira e janela baixa estilizada.
-        createFloor("bombsite-b",42,-31,20,19,.02,materials.siteB); createWall("b-east",54,-30,2,27); createWall("b-north",43,-44,24,2); createWall("b-south",45,-20,18,2);
-        createDoorway("b-main-entry",31,-29,2,16,6,6,"z"); createWall("b-window",48,-18,8,2,3); createPillar("b-platform-pillar",49,-38,1,4);
-        // 13. Caixas e coberturas distribuídas sem bloquear os eixos de circulação.
-        [[-39,-37,2.7],[-31,-36,2.4],[-47,5,2.6],[-17,18,2.5],[8,8,2.4],[24,12,2.6],[45,-34,3],[38,-37,2.5],[47,-25,2.4],[31,46,2.7],[43,45,2.7]].forEach((p,i)=>createCrate("cover-"+i,p[0],p[1],p[2]));
-        // 14. Rampas e escadas visuais ficam nas bordas, preservando rotas planas jogáveis.
-        createRamp("a-site-ramp",-24,-23,6,10,1.3); createStairs("b-back-stairs",49,-40,5,6,1,5,"x",-1); createRamp("ct-b-ramp",39,27,5,8,1);
-        // 15. Limites externos altos e contínuos mantêm o jogador dentro do mapa.
-        createWall("north-limit",0,-60,120,1,8); createWall("south-limit",0,60,120,1,8); createWall("west-limit",-60,0,1,120,8); createWall("east-limit",60,0,1,120,8);
-        const spawns={
-            ct:[[-14,49,0],[-8,49,0],[-2,49,0],[5,49,0],[12,49,0]],
-            tr:[[27,49,Math.PI],[33,49,Math.PI],[39,49,Math.PI],[45,49,Math.PI],[50,49,Math.PI]],
-            dm:[[-48,-18,0],[-35,-25,1],[40,-29,3],[0,22,0],[-6,8,2],[27,8,3],[48,8,2],[-36,31,1],[16,-12,0],[30,32,3],[5,46,Math.PI],[-18,-35,1]]
-        };
-        const normalized={}; Object.entries(spawns).forEach(([k,list])=>normalized[k]=list.map(([x,z,yaw])=>({x,y:PLAYER_HEIGHT,z,yaw})));
-        map.userData.materials=materials; map.userData.bombsites={a:{x:-34,y:.02,z:-31},b:{x:42,y:.02,z:-31}};
-        currentGameMap={id:MAP_ID,group:map,spawns:normalized,bombsites:map.userData.bombsites,bounds:BOUNDS}; applyGraphicsSettings(); return currentGameMap;
+        const crateMatrices=[];
+        function box(name,x,y,z,w,h,d,mat=materials.stone,solid=true){const mesh=new THREE.Mesh(boxGeometry,mat);mesh.name=name;mesh.position.set(x,y+h/2,z);mesh.scale.set(w,h,d);map.add(mesh);markShadowObject(mesh,{cast:h>.45,receive:true});if(solid)addCollider(mesh);return mesh;}
+        function addWalkableRect(x,z,w,d,heightAt){walkableSurfaces.push({x,z,halfW:w/2,halfD:d/2,heightAt});}
+        function createFloor(name,x,z,w,d,y=0,mat=materials.sand){const mesh=box(name,x,y-.18,z,w,.36,d,mat,false);mesh.receiveShadow=true;addWalkableRect(x,z,w,d,()=>y);return mesh;}
+        function createWall(name,x,z,w,d,h=4,y=0,mat=materials.stone){const wall=box(name,x,y,z,w,h,d,mat,true);if(h>=3.8)box(name+"-cap",x,y+h,z,w+.08,.18,d+.08,materials.stoneAlt,false);return wall;}
+        function createPlatform(name,x,z,w,d,y,mat=materials.stoneAlt){return createFloor(name,x,z,w,d,y,mat);}
+        function queueCrate(name,x,z,size=1.8,y=0,kind="wood"){crateMatrices.push({name,x,y,z,w:size,h:size,d:size,kind});}
+        function flushCrates(){for(const kind of ["wood","military"]){const list=crateMatrices.filter(c=>c.kind===kind);if(!list.length)continue;const instanced=new THREE.InstancedMesh(boxGeometry,materials[kind],list.length);instanced.name=kind+"-crates-instanced";const matrix=new THREE.Matrix4();list.forEach((c,i)=>{matrix.compose(new THREE.Vector3(c.x,c.y+c.h/2,c.z),new THREE.Quaternion(),new THREE.Vector3(c.w,c.h,c.d));instanced.setMatrixAt(i,matrix);colliders.push(new THREE.Box3(new THREE.Vector3(c.x-c.w/2,c.y,c.z-c.d/2),new THREE.Vector3(c.x+c.w/2,c.y+c.h,c.z+c.d/2)));});instanced.castShadow=instanced.receiveShadow=true;shadowCasters.add(instanced);shadowReceivers.add(instanced);wallObjects.push(instanced);map.add(instanced);}}
+        function createRamp(name,x,z,w,d,height,axis="z",direction=1,y=0){const along=axis==="x"?w:d,across=axis==="x"?d:w,ramp=new THREE.Mesh(boxGeometry,materials.stoneAlt);ramp.name=name;ramp.scale.set(across,.22,Math.hypot(along,height));ramp.rotation.order="YXZ";ramp.rotation.y=axis==="x"?Math.PI/2:0;ramp.rotation.x=-direction*Math.atan2(height,along);ramp.position.set(x,y+height/2-.1,z);map.add(ramp);markShadowObject(ramp,{cast:false,receive:true});addWalkableRect(x,z,w,d,(px,pz)=>y+height*Math.max(0,Math.min(1,.5+direction*((axis==="x"?px-x:pz-z)/along))));return ramp;}
+        function createStairs(name,x,z,w,depth,height,steps=7,axis="z",direction=1,y=0){const stepDepth=depth/steps;for(let i=0;i<steps;i++){const level=direction>0?i+1:steps-i,sx=x+(axis==="x"?(i-(steps-1)/2)*stepDepth:0),sz=z+(axis==="z"?(i-(steps-1)/2)*stepDepth:0),sw=axis==="x"?stepDepth:w,sd=axis==="z"?stepDepth:w,top=y+height*level/steps;box(`${name}-${i}`,sx,y,sz,sw,top-y,sd,materials.stoneAlt,false);addWalkableRect(sx,sz,sw,sd,()=>top);}}
+        function createDoor(name,x,z,span=7,axis="x",h=4.4){const depth=.75,gap=3.4,side=(span-gap)/2;if(axis==="x"){createWall(name+"-left",x-(gap+side)/2,z,side,depth,h);createWall(name+"-right",x+(gap+side)/2,z,side,depth,h);}else{createWall(name+"-left",x,z-(gap+side)/2,depth,side,h);createWall(name+"-right",x,z+(gap+side)/2,depth,side,h);}box(name+"-lintel",x,3,z,axis==="x"?gap:depth,1.4,axis==="x"?depth:gap,materials.stone,true);const curve=new THREE.Mesh(new THREE.TorusGeometry(gap/2,.16,6,18,Math.PI),materials.stoneAlt);curve.name=name+"-arch";curve.rotation.x=Math.PI/2;curve.rotation.z=Math.PI;curve.position.set(x,3,z);if(axis==="z")curve.rotation.y=Math.PI/2;map.add(curve);markShadowObject(curve);const leafOffset=gap/2+.18;[-1,1].forEach((side,i)=>box(name+"-door-"+i,x+(axis==="x"?side*leafOffset:0),0,z+(axis==="z"?side*leafOffset:0),axis==="x"?.25:1.55,2.8,axis==="x"?1.55:.25,materials.wood,true));}
+        function createPillar(name,x,z,radius=.65,height=4,y=0){const mesh=new THREE.Mesh(unitCylinder,materials.stoneAlt);mesh.name=name;mesh.scale.set(radius,height,radius);mesh.position.set(x,y+height/2,z);map.add(mesh);markShadowObject(mesh);addCollider(mesh);}
+        function createFloorPlan(){createFloor("continuous-collision-floor",0,0,120,120,0,materials.sand);createFloor("mid-paving",0,0,12,72,.02,materials.sandAlt);}
+        function createSpawnTR(){createWall("tr-west",-19,47,2,25);createWall("tr-south",0,59,40,2);createWall("tr-east",20,51,2,17);createDoor("tr-long-arch",-14,36,10,"x");createDoor("tr-tunnel-arch",14,36,10,"x");queueCrate("tr-stack-1",-10,50,2);queueCrate("tr-stack-2",-10,50,2,2);queueCrate("tr-cover",10,48,2.2);}
+        function createLong(){createWall("long-outer",-54,5,2,80,5);createWall("long-inner",-43,8,2,54,4.5);createWall("long-turn",-48,33,12,2);createDoor("long-doors",-48,27,10,"x");createWall("outside-long-parapet",-38,-10,12,1,1.2);createPlatform("pit",-49,-28,10,14,-.7,materials.sandAlt);createRamp("pit-ramp",-47,-17,7,10,.7,"z",1,-.7);queueCrate("pit-crate",-50,-27,2.2,-.7);queueCrate("long-cover",-48,10,2);}
+        function createBombsiteA(){createPlatform("bombsite-a",-34,-36,24,18,.8,materials.stoneAlt);createWall("a-back",-34,-46,26,2,5);createWall("a-goose",-22,-41,2,10,4);createRamp("a-long-ramp",-46,-35,10,13,.8,"x",1);createStairs("a-short-stairs",-23,-28,6,8,.8,7,"z",-1);box("a-site-mark",-34,.81,-36,5,.035,5,materials.red,false);queueCrate("a-default",-35,-38,2,.8,"military");queueCrate("a-triple-1",-29,-34,1.8,.8,"military");queueCrate("a-triple-2",-29,-34,1.8,2.6,"military");queueCrate("a-long-box",-40,-31,1.8,.8,"wood");}
+        function createCTSpawn(){createWall("ct-back",0,-47,22,2,4.5);createDoor("ct-a-arch",-12,-38,8,"z");createDoor("ct-b-arch",12,-38,8,"z");createPillar("ct-pillar-left",-5,-38);createPillar("ct-pillar-right",5,-38);queueCrate("ct-cover",0,-41,2);}
+        function createMid(){createWall("mid-left",-9,3,2,52);createWall("mid-right",9,8,2,41);createDoor("mid-doors",0,-20,12,"x");createRamp("mid-slope",0,23,10,14,1,"z",1);createWall("top-mid-divider",-3,31,12,2);queueCrate("mid-box",-5,13,1.8);queueCrate("top-mid-box",5,28,2);}
+        function createShort(){createPlatform("short-catwalk",-18,-14,16,6,.9,materials.stoneAlt);createWall("short-parapet",-18,-10.5,18,1,1.1,.9);createRamp("short-ramp",-14,-2,6,14,.9,"z",-1);createStairs("short-a-steps",-24,-22,6,9,.9,8,"z",-1);queueCrate("short-cover",-20,-15,1.6,.9);}
+        function createLowerTunnel(){createFloor("lower-tunnel",18,4,18,8,.05,materials.dark);createWall("lower-left",18,0,20,1.5,4,0,materials.dark);createWall("lower-right",18,8,20,1.5,4,0,materials.dark);createDoor("lower-mid-door",9,4,8,"z");createRamp("lower-rise",27,4,7,8,1,"x",1);}
+        function createUpperTunnel(){createFloor("upper-tunnel",36,20,30,20,1,materials.dark);createWall("upper-west",21,20,1.5,22,4,1,materials.dark);createWall("upper-east",51,20,1.5,22,4,1,materials.dark);createWall("upper-south",36,30,31,1.5,4,1,materials.dark);createDoor("upper-entry",36,10,12,"x");createStairs("tunnel-steps",30,7,6,8,1,7,"z",1);createPillar("upper-column",37,20,.8,4,1);queueCrate("tunnel-crate",45,22,1.8,1);}
+        function createOutsideB(){createWall("outside-b-north",34,-1,24,2);createWall("outside-b-south",34,-11,20,2);createDoor("b-doors",45,-6,10,"z");queueCrate("outside-b-cover",32,-6,2,0,"wood");queueCrate("outside-b-stack",37,-6,1.7,0,"military");queueCrate("outside-b-stack-top",37,-6,1.7,1.7,"military");}
+        function createBombsiteB(){createPlatform("bombsite-b",42,-29,22,20,.35,materials.stoneAlt);createWall("b-back",43,-40,25,2,5);createWall("b-east",55,-28,2,26,5);createWall("b-window-wall",31,-27,2,12,4);createDoor("b-main-arch",31,-17,9,"z");createPlatform("b-back-platform",48,-34,10,7,1.1,materials.concrete);createStairs("b-platform-steps",42,-34,5,7,.75,6,"x",1,.35);box("b-site-mark",42,.36,-29,5,.035,5,materials.red,false);queueCrate("b-default",42,-29,2,.35,"military");queueCrate("b-double-low",48,-25,1.8,.35,"military");queueCrate("b-double-high",48,-25,1.8,2.15,"military");queueCrate("b-back-box",49,-35,1.6,1.1,"wood");}
+        function createAtmosphere(){const cloudMat=new THREE.MeshBasicMaterial({color:0xf4ead5,transparent:true,opacity:.75});[[-35,22,-80,16],[15,25,-86,21],[52,20,-76,13]].forEach(([x,y,z,w],i)=>box("cloud-"+i,x,y,z,w,1.2,4,cloudMat,false));const mountainMat=material(0x756d63);for(let i=0;i<14;i++){const mountain=new THREE.Mesh(new THREE.ConeGeometry(8+(i%3)*3,15+(i%4)*4,5),mountainMat);const angle=i/14*Math.PI*2;mountain.position.set(Math.cos(angle)*90,7,Math.sin(angle)*90);mountain.rotation.y=angle;map.add(mountain);} }
+        function createOuterWalls(){createWall("north-boundary",0,-60,120,1.5,7);createWall("south-boundary",0,60,120,1.5,7);createWall("west-boundary",-60,0,1.5,120,7);createWall("east-boundary",60,0,1.5,120,7);}
+        function createDustInspiredMap(){createFloorPlan();createSpawnTR();createLong();createBombsiteA();createCTSpawn();createMid();createShort();createLowerTunnel();createUpperTunnel();createOutsideB();createBombsiteB();createOuterWalls();createAtmosphere();flushCrates();}
+        Object.assign(window,{createSpawnTR,createLong,createBombsiteA,createCTSpawn,createMid,createShort,createLowerTunnel,createUpperTunnel,createOutsideB,createBombsiteB,createDustInspiredMap});
+        createDustInspiredMap();
+        const spawns={ct:[[-5,-43,0],[0,-43,0],[5,-43,0]],tr:[[-8,53,Math.PI],[0,53,Math.PI],[8,53,Math.PI]],dm:[[-48,17,0],[-35,-35,1],[42,-29,3],[0,15,0],[-18,-15,2],[35,20,3],[33,-6,2],[-46,-25,1]]};
+        const normalized={};Object.entries(spawns).forEach(([k,list])=>normalized[k]=list.map(([x,z,yaw])=>({x,y:PLAYER_HEIGHT,z,yaw})));
+        map.userData.materials=materials;map.userData.bombsites={a:{x:-34,y:.82,z:-36},b:{x:42,y:.37,z:-29}};
+        currentGameMap={id:MAP_ID,group:map,spawns:normalized,bombsites:map.userData.bombsites,bounds:BOUNDS};applyGraphicsSettings();return currentGameMap;
     }
 
     // Registro interno de mapas. O menu guarda somente esta chave; nenhum arquivo e carregado.
@@ -512,7 +483,7 @@
         animateFirstPerson(dt,Math.hypot(forwardInput,strafeInput)*player.speed);
     }
     function animate(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;updatePlayer(dt);if(!controlsEnabled)animateFirstPerson(dt,0);renderer.render(scene,camera);requestAnimationFrame(animate);}
-    function initializeThreeRuntime(){if(typeof THREE==="undefined")throw new Error("Three.js não pôde ser carregado");scene=new THREE.Scene();scene.background=new THREE.Color(0x8bb0c1);scene.fog=new THREE.Fog(0x8bb0c1,85,165);currentFov=Number(localStorage.getItem("cs16plh-fov"))||75;graphicsQuality=localStorage.getItem("cs16plh-quality")||"Média";shadowsEnabled=(localStorage.getItem("cs16plh-shadows")||"Ligadas")!=="Desligadas";currentTimeOfDay=localStorage.getItem("cs16plh-time-of-day")||"midday";camera=new THREE.PerspectiveCamera(currentFov,innerWidth/innerHeight,.1,250);renderer=new THREE.WebGLRenderer({antialias:graphicsQuality!=="Baixa",powerPreference:"high-performance"});renderer.setSize(innerWidth,innerHeight);renderer.domElement.id="game-canvas";document.getElementById("game-container").prepend(renderer.domElement);scene.add(camera);mapGroup=new THREE.Group();scene.add(mapGroup);ambientLight=new THREE.HemisphereLight(0xffe5b5,0x665748,1.6);scene.add(ambientLight);sunLight=new THREE.DirectionalLight(0xffd79c,1.4);sunLight.position.set(-30,55,25);scene.add(sunLight);[[-34,5,-31],[42,5,-31],[0,5,-8],[35,4,13]].forEach(([x,y,z])=>{const l=new THREE.PointLight(0xffd79c,.75,22,2);l.position.set(x,y,z);l.visible=false;nightLights.push(l);scene.add(l);});player.position=new THREE.Vector3(0,PLAYER_HEIGHT,0);player.velocity=new THREE.Vector3();camera.near=.05;createFirstPersonView();applyFov(currentFov);applyGraphicsSettings();setMapTimeOfDay(currentTimeOfDay);updateCamera();addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});requestAnimationFrame(animate);}
+    function initializeThreeRuntime(){if(typeof THREE==="undefined")throw new Error("Three.js não pôde ser carregado");scene=new THREE.Scene();scene.background=new THREE.Color(0x8bb0c1);scene.fog=new THREE.Fog(0x8bb0c1,85,165);currentFov=Number(localStorage.getItem("cs16plh-fov"))||75;graphicsQuality=localStorage.getItem("cs16plh-quality")||"Média";shadowsEnabled=(localStorage.getItem("cs16plh-shadows")||"Ligadas")!=="Desligadas";currentTimeOfDay=localStorage.getItem("cs16plh-time-of-day")||"midday";camera=new THREE.PerspectiveCamera(currentFov,innerWidth/innerHeight,.1,250);renderer=new THREE.WebGLRenderer({antialias:graphicsQuality!=="Baixa",powerPreference:"high-performance"});renderer.setSize(innerWidth,innerHeight);renderer.domElement.id="game-canvas";document.getElementById("game-container").prepend(renderer.domElement);scene.add(camera);mapGroup=new THREE.Group();scene.add(mapGroup);ambientLight=new THREE.HemisphereLight(0xffe5b5,0x665748,1.35);scene.add(ambientLight);const fillLight=new THREE.AmbientLight(0xffd9ad,.28);scene.add(fillLight);sunLight=new THREE.DirectionalLight(0xffd79c,1.4);sunLight.position.set(-30,55,25);scene.add(sunLight);[[-34,5,-31],[42,5,-31],[0,5,-8],[35,4,13]].forEach(([x,y,z])=>{const l=new THREE.PointLight(0xffd79c,.75,22,2);l.position.set(x,y,z);l.visible=false;nightLights.push(l);scene.add(l);});player.position=new THREE.Vector3(0,PLAYER_HEIGHT,0);player.velocity=new THREE.Vector3();camera.near=.05;createFirstPersonView();applyFov(currentFov);applyGraphicsSettings();setMapTimeOfDay(currentTimeOfDay);updateCamera();addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});requestAnimationFrame(animate);}
 
     document.querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>{setFirstPersonVisible(false);closeWindows();document.getElementById(b.dataset.open).classList.add("open")}));
     function closeActiveWindow(){ closeWindows(); if(pauseOpen){document.getElementById("pause-menu").hidden=false;} }
